@@ -1,0 +1,7 @@
+# Governance marker: code lands in this repository's default branch only
+# by the named group's passed vote. The merge executor refuses to act for
+# any other group. Keep this file in the default branch; delete it to
+# withdraw consent. Generated in Manage group — do not edit by hand.
+version: 1
+group: d8a:batch-market
+token: UW6k4MgJ_5cYYagCTXiNNb_C648gkmeViMaoVSlHCABO5S2SOG_pU9txYm_1m8XjrbDJfWVzhOhs3OBim6iD6efP1aYNhk5ifcbELuAp6MNu3CbB40-JVQyxQXhY4y4Zds5bmDc62JS6Y3nzeojauavf1nEBzgTu5Jqtn3acUCgQYq7P4czZ03t14YRB6ndUkWBe6MKAEV-UbufGLK1Pw1eEE7Add8h8LRjorMbcG41k0yNTqqLHqBMNfNl6UGN9vUHpXkhciR0yxS_4fyGuEF0n67deG9cex0w2FjW81wv6V_8N9CFlTjiXMve2Yii96PVBTxKSZnVKLIz-i12NEg
