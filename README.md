@@ -15,3 +15,4 @@ Testing
 API
 
 - GET /api/products?page=1&size=20 returns JSON { items, total, page, size }. Ensure the DB is seeded first.
+- GET /api/sellers/[id]?page=1&size=20 returns JSON { seller, products, total, page, size } for the requested seller id.
