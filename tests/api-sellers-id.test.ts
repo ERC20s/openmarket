@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { PrismaClient } from '@prisma/client'
+import faker from 'faker'
 import { NextApiRequest, NextApiResponse } from 'next'
 import handler from '../pages/api/sellers/[id]'
 
@@ -32,7 +33,34 @@ function mockRes() {
 beforeAll(async () => {
   const count = await prisma.seller.count()
   if (count < 1) {
-    console.warn('No sellers in DB; tests expect seed to be run')
+    // create a seller with at least one product so tests can run without the full seed
+    const seller = await prisma.seller.create({
+      data: { name: faker.company.companyName(), email: faker.internet.email() },
+    })
+    await prisma.product.create({
+      data: {
+        title: faker.commerce.productName(),
+        description: faker.commerce.productDescription(),
+        price_cents: Math.round(parseFloat(faker.commerce.price(1, 1000)) * 100),
+        sellerId: seller.id,
+      },
+    })
+  } else {
+    // ensure at least one seller has a product
+    const sellerWithProduct = await prisma.seller.findFirst({ where: { products: { some: {} } } })
+    if (!sellerWithProduct) {
+      const seller = await prisma.seller.findFirst()
+      if (seller) {
+        await prisma.product.create({
+          data: {
+            title: faker.commerce.productName(),
+            description: faker.commerce.productDescription(),
+            price_cents: Math.round(parseFloat(faker.commerce.price(1, 1000)) * 100),
+            sellerId: seller.id,
+          },
+        })
+      }
+    }
   }
 })
 
