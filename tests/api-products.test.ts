@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { PrismaClient } from '@prisma/client'
+import faker from 'faker'
 // We will import the handler directly
 import { NextApiRequest, NextApiResponse } from 'next'
 import handler from '../pages/api/products'
@@ -27,10 +28,28 @@ function mockRes() {
 }
 
 beforeAll(async () => {
-  // assume database has been seeded by running prisma/seed.ts prior to tests
+  // ensure a minimal set of products exist so tests can run in CI without manual seeding
   const count = await prisma.product.count()
-  if (count < 500) {
-    console.warn('Less than 500 products in DB; tests expect seed to be run')
+  if (count < 20) {
+    // find or create a seller to attach products to
+    let seller = await prisma.seller.findFirst()
+    if (!seller) {
+      seller = await prisma.seller.create({
+        data: { name: faker.company.companyName(), email: faker.internet.email() },
+      })
+    }
+
+    const toCreate = 20 - count
+    for (let i = 0; i < toCreate; i++) {
+      await prisma.product.create({
+        data: {
+          title: faker.commerce.productName(),
+          description: faker.commerce.productDescription(),
+          price_cents: Math.round(parseFloat(faker.commerce.price(1, 1000)) * 100),
+          sellerId: seller.id,
+        },
+      })
+    }
   }
 })
 
