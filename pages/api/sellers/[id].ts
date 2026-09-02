@@ -1,19 +1,19 @@
 import { NextApiRequest, NextApiResponse } from 'next'
 import { PrismaClient } from '@prisma/client'
+import { reqUrl, parseIdFromPath, parsePageSize, skipFor } from '../../../lib/api-helpers'
 
 const prisma = new PrismaClient()
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Expect URLs like /api/sellers/1
-  const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
-  const parts = url.pathname.split('/')
-  const last = parts[parts.length - 1]
-  const id = parseInt(last, 10)
+  const url = reqUrl(req)
 
-  if (Number.isNaN(id) || id < 1) {
-    res.status(422).json({ error: 'Invalid id' })
+  const parsed = parseIdFromPath(url)
+  if (!parsed.ok) {
+    res.status(422).json({ error: parsed.error })
     return
   }
+  const { id } = parsed
 
   // Only support GET for now
   if (req.method && req.method !== 'GET') {
@@ -22,18 +22,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return
   }
 
-  const pageRaw = url.searchParams.get('page') ?? '1'
-  const sizeRaw = url.searchParams.get('size') ?? '20'
-
-  const page = parseInt(pageRaw, 10)
-  const size = parseInt(sizeRaw, 10)
-
-  if (Number.isNaN(page) || page < 1 || Number.isNaN(size) || size < 1 || size > 100) {
-    res.status(422).json({ error: 'Invalid page or size' })
+  const paging = parsePageSize(url)
+  if (!paging.ok) {
+    res.status(422).json({ error: paging.error })
     return
   }
+  const { page, size } = paging
 
-  const skip = (page - 1) * size
+  const skip = skipFor(page, size)
 
   // Ensure seller exists
   const seller = await prisma.seller.findUnique({ where: { id } })
