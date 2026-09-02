@@ -18,5 +18,5 @@ run:
   {
     "// setup": "npm i, then npm run prisma:generate && npm run prisma:migrate && npm run prisma:seed",
     "test": { "cmd": "npm test" },
-    "// web": "no dev server yet - pages/api/ exists but package.json has no dev script"
+    "web": { "cmd": "npm run dev", "port": 3000 }
   }
