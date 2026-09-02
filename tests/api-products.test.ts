@@ -1,70 +1,74 @@
-import { describe, it, expect, beforeAll } from 'vitest'
-import { PrismaClient } from '@prisma/client'
-import faker from 'faker'
-// We will import the handler directly
-import { NextApiRequest, NextApiResponse } from 'next'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+
+// Must be registered before the handler is imported: the handler builds its
+// Prisma client at module scope. vi.mock is hoisted above these imports.
+vi.mock('@prisma/client', async () => {
+  const { PrismaClientMock } = await import('./helpers/prisma-mock')
+  return { PrismaClient: PrismaClientMock }
+})
+
+import { prismaSpies, resetPrismaSpies, mockReq, mockRes, fakeProduct } from './helpers/prisma-mock'
 import handler from '../pages/api/products'
 
-const prisma = new PrismaClient()
-
-function mockReq(url: string): Partial<NextApiRequest> {
-  return {
-    url,
-    headers: { host: 'localhost' },
-  }
-}
-
-function mockRes() {
-  const res: Partial<NextApiResponse> = {}
-  res.status = (code: number) => {
-    res.statusCode = code
-    return res as NextApiResponse
-  }
-  res.json = (body: any) => {
-    res.body = body
-    return res as NextApiResponse
-  }
-  return res as NextApiResponse
-}
-
-beforeAll(async () => {
-  // ensure a minimal set of products exist so tests can run in CI without manual seeding
-  const count = await prisma.product.count()
-  if (count < 20) {
-    // find or create a seller to attach products to
-    let seller = await prisma.seller.findFirst()
-    if (!seller) {
-      seller = await prisma.seller.create({
-        data: { name: faker.company.companyName(), email: faker.internet.email() },
-      })
-    }
-
-    const toCreate = 20 - count
-    for (let i = 0; i < toCreate; i++) {
-      await prisma.product.create({
-        data: {
-          title: faker.commerce.productName(),
-          description: faker.commerce.productDescription(),
-          price_cents: Math.round(parseFloat(faker.commerce.price(1, 1000)) * 100),
-          sellerId: seller.id,
-        },
-      })
-    }
-  }
+beforeEach(() => {
+  resetPrismaSpies()
 })
 
 describe('GET /api/products pagination', () => {
-  it('returns 20 items for page=1&size=20', async () => {
-    const req = mockReq('/api/products?page=1&size=20') as NextApiRequest
-    const res = mockRes()
+  it('asks for the requested page and echoes page/size/total', async () => {
+    const rows = [fakeProduct({ id: 21 }), fakeProduct({ id: 22 })]
+    prismaSpies.product.count.mockResolvedValue(42)
+    prismaSpies.product.findMany.mockResolvedValue(rows)
 
-    await handler(req, res)
+    const res = mockRes()
+    await handler(mockReq('/api/products?page=3&size=10'), res)
+
     expect(res.statusCode).toBe(200)
-    const body = res.body as any
-    expect(body).toHaveProperty('items')
-    expect(Array.isArray(body.items)).toBe(true)
-    expect(body.items.length).toBe(20)
-    expect(body).toHaveProperty('total')
-    expect(typeof body.total).toBe('number')
+    expect(res.body.items).toEqual(rows)
+    expect(res.body.total).toBe(42)
+    expect(res.body.page).toBe(3)
+    expect(res.body.size).toBe(10)
+
+    expect(prismaSpies.product.findMany).toHaveBeenCalledTimes(1)
+    expect(prismaSpies.product.findMany).toHaveBeenCalledWith({
+      skip: 20,
+      take: 10,
+      orderBy: { createdAt: 'desc' },
+      include: { seller: { select: { id: true, name: true } } },
+    })
+  })
+
+  it('defaults to page 1, size 20 when no query is given', async () => {
+    const res = mockRes()
+    await handler(mockReq('/api/products'), res)
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body.page).toBe(1)
+    expect(res.body.size).toBe(20)
+    expect(prismaSpies.product.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 0, take: 20 })
+    )
+  })
+
+  it('returns 422 for page=0 without touching the database', async () => {
+    const res = mockRes()
+    await handler(mockReq('/api/products?page=0&size=20'), res)
+
+    expect(res.statusCode).toBe(422)
+    expect(res.body).toHaveProperty('error')
+    expect(prismaSpies.product.count).not.toHaveBeenCalled()
+    expect(prismaSpies.product.findMany).not.toHaveBeenCalled()
+  })
+
+  it('returns 422 for a size above the 100 cap and for a non-numeric size', async () => {
+    const tooBig = mockRes()
+    await handler(mockReq('/api/products?size=101'), tooBig)
+    expect(tooBig.statusCode).toBe(422)
+
+    const nonsense = mockRes()
+    await handler(mockReq('/api/products?size=abc'), nonsense)
+    expect(nonsense.statusCode).toBe(422)
+
+    expect(prismaSpies.product.findMany).not.toHaveBeenCalled()
   })
 })

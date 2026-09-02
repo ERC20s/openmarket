@@ -35,8 +35,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const skip = (page - 1) * size
 
-  // Ensure seller exists
-  const seller = await prisma.seller.findUnique({ where: { id } })
+  // Ensure seller exists. Select explicitly: a bare findUnique returns every
+  // column, which would ship the seller's email address to any visitor. The
+  // public shape is the same one products embed: { id, name }.
+  const seller = await prisma.seller.findUnique({
+    where: { id },
+    select: { id: true, name: true },
+  })
   if (!seller) {
     res.status(404).json({ error: 'Seller not found' })
     return
