@@ -1,9 +1,14 @@
 import { NextApiRequest, NextApiResponse } from 'next'
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import prisma from '../../lib/prisma'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Only support GET for now
+  if (req.method && req.method !== 'GET') {
+    res.setHeader('Allow', 'GET')
+    res.status(405).json({ error: 'Method not allowed' })
+    return
+  }
+
   const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
   const pageRaw = url.searchParams.get('page') ?? '1'
   const sizeRaw = url.searchParams.get('size') ?? '20'
@@ -17,15 +22,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const skip = (page - 1) * size
-  const [total, items] = await Promise.all([
-    prisma.product.count(),
-    prisma.product.findMany({
-      skip,
-      take: size,
-      orderBy: { createdAt: 'desc' },
-      include: { seller: { select: { id: true, name: true } } },
-    }),
-  ])
 
-  res.status(200).json({ items, total, page, size })
+  try {
+    const [total, items] = await Promise.all([
+      prisma.product.count(),
+      prisma.product.findMany({
+        skip,
+        take: size,
+        orderBy: { createdAt: 'desc' },
+        include: { seller: { select: { id: true, name: true } } },
+      }),
+    ])
+
+    res.status(200).json({ items, total, page, size })
+  } catch (err) {
+    console.error('GET /api/products failed', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
 }

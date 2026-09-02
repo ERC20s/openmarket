@@ -1,7 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next'
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import prisma from '../../../lib/prisma'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Expect URLs like /api/sellers/1
@@ -35,23 +33,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const skip = (page - 1) * size
 
-  // Ensure seller exists
-  const seller = await prisma.seller.findUnique({ where: { id } })
-  if (!seller) {
-    res.status(404).json({ error: 'Seller not found' })
-    return
+  try {
+    // Ensure seller exists
+    const seller = await prisma.seller.findUnique({ where: { id } })
+    if (!seller) {
+      res.status(404).json({ error: 'Seller not found' })
+      return
+    }
+
+    const [total, products] = await Promise.all([
+      prisma.product.count({ where: { sellerId: id } }),
+      prisma.product.findMany({
+        where: { sellerId: id },
+        skip,
+        take: size,
+        orderBy: { createdAt: 'desc' },
+        include: { seller: { select: { id: true, name: true } } },
+      }),
+    ])
+
+    res.status(200).json({ seller, products, total, page, size })
+  } catch (err) {
+    console.error('GET /api/sellers/[id] failed', err)
+    res.status(500).json({ error: 'Internal server error' })
   }
-
-  const [total, products] = await Promise.all([
-    prisma.product.count({ where: { sellerId: id } }),
-    prisma.product.findMany({
-      where: { sellerId: id },
-      skip,
-      take: size,
-      orderBy: { createdAt: 'desc' },
-      include: { seller: { select: { id: true, name: true } } },
-    }),
-  ])
-
-  res.status(200).json({ seller, products, total, page, size })
 }
