@@ -4,6 +4,14 @@ import { PrismaClient } from '@prisma/client'
 const prisma = new PrismaClient()
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Only support GET for now — checked before any database work, matching the
+  // detail routes at /api/products/[id] and /api/sellers/[id].
+  if (req.method && req.method !== 'GET') {
+    res.setHeader('Allow', 'GET')
+    res.status(405).json({ error: 'Method not allowed' })
+    return
+  }
+
   const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
   const pageRaw = url.searchParams.get('page') ?? '1'
   const sizeRaw = url.searchParams.get('size') ?? '20'

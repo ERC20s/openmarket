@@ -7,9 +7,10 @@ import handler from '../pages/api/products'
 
 const prisma = new PrismaClient()
 
-function mockReq(url: string): Partial<NextApiRequest> {
+function mockReq(url: string, method = 'GET'): Partial<NextApiRequest> {
   return {
     url,
+    method,
     headers: { host: 'localhost' },
   }
 }
@@ -23,6 +24,9 @@ function mockRes() {
   res.json = (body: any) => {
     res.body = body
     return res as NextApiResponse
+  }
+  res.setHeader = (name: string, value: string) => {
+    // no-op for tests
   }
   return res as NextApiResponse
 }
@@ -66,5 +70,27 @@ describe('GET /api/products pagination', () => {
     expect(body.items.length).toBe(20)
     expect(body).toHaveProperty('total')
     expect(typeof body.total).toBe('number')
+  })
+})
+
+describe('method guard on /api/products', () => {
+  it('returns 405 for a POST', async () => {
+    const req = mockReq('/api/products?page=1&size=20', 'POST') as NextApiRequest
+    const res = mockRes()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(405)
+    const body = res.body as any
+    expect(body).toHaveProperty('error')
+  })
+
+  it('returns 405 for a DELETE', async () => {
+    const req = mockReq('/api/products', 'DELETE') as NextApiRequest
+    const res = mockRes()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(405)
   })
 })
