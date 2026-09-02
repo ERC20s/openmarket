@@ -1,19 +1,19 @@
 import { NextApiRequest, NextApiResponse } from 'next'
 import { PrismaClient } from '@prisma/client'
+import { reqUrl, parseIdFromPath } from '../../../lib/api-helpers'
 
 const prisma = new PrismaClient()
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Expect URLs like /api/products/1
-  const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
-  const parts = url.pathname.split('/')
-  const last = parts[parts.length - 1]
-  const id = parseInt(last, 10)
+  const url = reqUrl(req)
 
-  if (Number.isNaN(id) || id < 1) {
-    res.status(422).json({ error: 'Invalid id' })
+  const parsed = parseIdFromPath(url)
+  if (!parsed.ok) {
+    res.status(422).json({ error: parsed.error })
     return
   }
+  const { id } = parsed
 
   // Only support GET for now
   if (req.method && req.method !== 'GET') {
