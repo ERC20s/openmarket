@@ -1,7 +1,15 @@
 import { NextApiRequest, NextApiResponse } from 'next'
 import { PrismaClient } from '@prisma/client'
 
-const prisma = new PrismaClient()
+declare global {
+  // Allow a single PrismaClient instance to be shared across module reloads in dev
+  // eslint-disable-next-line no-var
+  var __prisma?: PrismaClient
+}
+
+const prisma = (process.env.NODE_ENV === 'production')
+  ? new PrismaClient()
+  : (globalThis as any).__prisma ?? ((globalThis as any).__prisma = new PrismaClient())
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
