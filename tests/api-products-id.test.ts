@@ -1,10 +1,19 @@
-import { describe, it, expect, beforeAll } from 'vitest'
-import { PrismaClient } from '@prisma/client'
-import faker from 'faker'
-import { NextApiRequest, NextApiResponse } from 'next'
-import handler from '../pages/api/products/[id]'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 
-const prisma = new PrismaClient()
+// The handler does `new PrismaClient()` at module scope, so the client has to be
+// replaced before the handler is imported. vi.mock is hoisted above the imports.
+vi.mock('@prisma/client', async () => {
+  const stub = await import('./helpers/prisma-stub')
+  return { PrismaClient: stub.PrismaClientStub }
+})
+
+import type { NextApiRequest, NextApiResponse } from 'next'
+import handler from '../pages/api/products/[id]'
+import {
+  resetPrismaStub,
+  fixtureProductsNewestFirst,
+  MISSING_PRODUCT_ID,
+} from './helpers/prisma-stub'
 
 function mockReq(url: string, method = 'GET'): Partial<NextApiRequest> {
   return {
@@ -14,72 +23,76 @@ function mockReq(url: string, method = 'GET'): Partial<NextApiRequest> {
   }
 }
 
-function mockRes() {
-  const res: Partial<NextApiResponse> = {}
+type MockRes = NextApiResponse & { body?: any; headers: Record<string, string> }
+
+function mockRes(): MockRes {
+  const res: any = { headers: {} }
   res.status = (code: number) => {
     res.statusCode = code
-    return res as NextApiResponse
+    return res
   }
   res.json = (body: any) => {
     res.body = body
-    return res as NextApiResponse
+    return res
   }
   res.setHeader = (name: string, value: string) => {
-    // no-op for tests
+    res.headers[name] = value
+    return res
   }
-  return res as NextApiResponse
+  return res as MockRes
 }
 
-beforeAll(async () => {
-  const count = await prisma.product.count()
-  if (count < 1) {
-    // create a minimal seller and product so tests can run without the full seed
-    const seller = await prisma.seller.create({
-      data: { name: faker.company.companyName(), email: faker.internet.email() },
-    })
-    await prisma.product.create({
-      data: {
-        title: faker.commerce.productName(),
-        description: faker.commerce.productDescription(),
-        price_cents: Math.round(parseFloat(faker.commerce.price(1, 1000)) * 100),
-        sellerId: seller.id,
-      },
-    })
-  }
+beforeEach(() => {
+  resetPrismaStub()
 })
 
 describe('GET /api/products/[id]', () => {
-  it('returns 200 and product shape for an existing id', async () => {
-    const anyProduct = await prisma.product.findFirst()
-    if (!anyProduct) {
-      throw new Error('No product in DB for test')
-    }
+  it('returns 200 and the product with its seller for an existing id', async () => {
+    const fixture = fixtureProductsNewestFirst()[0]
 
-    const req = mockReq(`/api/products/${anyProduct.id}`) as NextApiRequest
+    const req = mockReq(`/api/products/${fixture.id}`) as NextApiRequest
     const res = mockRes()
 
     await handler(req, res)
 
     expect(res.statusCode).toBe(200)
     const body = res.body as any
-    expect(body).toHaveProperty('id', anyProduct.id)
-    expect(body).toHaveProperty('title')
-    expect(body).toHaveProperty('description')
-    expect(body).toHaveProperty('price_cents')
-    expect(body).toHaveProperty('seller')
-    expect(body.seller).toHaveProperty('id')
-    expect(body.seller).toHaveProperty('name')
+    expect(body.id).toBe(fixture.id)
+    expect(body.title).toBe(fixture.title)
+    expect(body.description).toBe(fixture.description)
+    expect(body.price_cents).toBe(fixture.price_cents)
+    expect(body.seller).toMatchObject({ id: fixture.sellerId })
+    expect(typeof body.seller.name).toBe('string')
   })
 
-  it('returns 404 for a non-existent id', async () => {
-    // choose a large id that's unlikely to exist
-    const req = mockReq('/api/products/99999999') as NextApiRequest
+  it('returns 404 for an id that is not in the fixture', async () => {
+    const req = mockReq(`/api/products/${MISSING_PRODUCT_ID}`) as NextApiRequest
     const res = mockRes()
 
     await handler(req, res)
 
     expect(res.statusCode).toBe(404)
-    const body = res.body as any
-    expect(body).toHaveProperty('error')
+    expect(res.body as any).toHaveProperty('error')
+  })
+
+  it('returns 422 for a non-numeric id', async () => {
+    const req = mockReq('/api/products/not-a-number') as NextApiRequest
+    const res = mockRes()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(422)
+    expect(res.body as any).toHaveProperty('error')
+  })
+
+  it('returns 405 with Allow: GET for a POST', async () => {
+    const req = mockReq('/api/products/1', 'POST') as NextApiRequest
+    const res = mockRes()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(405)
+    expect(res.headers['Allow']).toBe('GET')
+    expect(res.body as any).toHaveProperty('error')
   })
 })

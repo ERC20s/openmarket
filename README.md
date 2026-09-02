@@ -10,7 +10,19 @@ Local development and DB
 
 Testing
 
-- Run tests: npm test
+- Run tests once and exit: npm run test:run
+- Watch mode while developing: npm test
+- The tests need NO database. They do not require prisma:generate, prisma:migrate or
+  prisma:seed, they never touch prisma/dev.db, and they can be run straight after
+  npm install on a clean clone.
+- How: each test file mocks '@prisma/client' with the in-memory client in
+  tests/helpers/prisma-stub.ts (2 sellers, 25 products, fixed ids and createdAt
+  values), so responses are asserted against exact fixture rows instead of whatever
+  happens to be in a developer's database.
+- Trade-off: because no SQL runs, the tests do not prove a Prisma query or the schema
+  is valid. Changes to prisma/schema.prisma still need a real prisma:migrate run, and
+  the stub in tests/helpers/prisma-stub.ts must be updated alongside the handlers when
+  a new query shape is introduced (unsupported calls throw rather than return nothing).
 
 API
 

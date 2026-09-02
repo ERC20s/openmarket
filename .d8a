@@ -130,6 +130,6 @@ payments:
 run:
   {
     "// setup": "npm i, then npm run prisma:generate && npm run prisma:migrate && npm run prisma:seed",
-    "test": { "cmd": "npm test" },
+    "test": { "cmd": "npm run test:run" },
     "// web": "no dev server yet - pages/api/ exists but package.json has no dev script"
   }
