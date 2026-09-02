@@ -1,7 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next'
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import prisma from '../../../lib/prisma'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Expect URLs like /api/products/1
@@ -22,15 +20,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return
   }
 
-  const product = await prisma.product.findUnique({
-    where: { id },
-    include: { seller: { select: { id: true, name: true } } },
-  })
+  try {
+    const product = await prisma.product.findUnique({
+      where: { id },
+      include: { seller: { select: { id: true, name: true } } },
+    })
 
-  if (!product) {
-    res.status(404).json({ error: 'Product not found' })
-    return
+    if (!product) {
+      res.status(404).json({ error: 'Product not found' })
+      return
+    }
+
+    res.status(200).json(product)
+  } catch (err) {
+    console.error('GET /api/products/[id] failed', err)
+    res.status(500).json({ error: 'Internal server error' })
   }
-
-  res.status(200).json(product)
 }

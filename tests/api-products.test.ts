@@ -1,21 +1,22 @@
 import { describe, it, expect, beforeAll } from 'vitest'
-import { PrismaClient } from '@prisma/client'
 import faker from 'faker'
 // We will import the handler directly
 import { NextApiRequest, NextApiResponse } from 'next'
 import handler from '../pages/api/products'
+import prisma from '../lib/prisma'
 
-const prisma = new PrismaClient()
-
-function mockReq(url: string): Partial<NextApiRequest> {
+function mockReq(url: string, method = 'GET'): Partial<NextApiRequest> {
   return {
     url,
+    method,
     headers: { host: 'localhost' },
   }
 }
 
 function mockRes() {
-  const res: Partial<NextApiResponse> = {}
+  const res: Partial<NextApiResponse> & { headers: Record<string, string> } = {
+    headers: {},
+  } as any
   res.status = (code: number) => {
     res.statusCode = code
     return res as NextApiResponse
@@ -24,7 +25,11 @@ function mockRes() {
     res.body = body
     return res as NextApiResponse
   }
-  return res as NextApiResponse
+  res.setHeader = ((name: string, value: any) => {
+    res.headers[name] = String(value)
+    return res as NextApiResponse
+  }) as NextApiResponse['setHeader']
+  return res as NextApiResponse & { headers: Record<string, string> }
 }
 
 beforeAll(async () => {
@@ -66,5 +71,26 @@ describe('GET /api/products pagination', () => {
     expect(body.items.length).toBe(20)
     expect(body).toHaveProperty('total')
     expect(typeof body.total).toBe('number')
+  })
+})
+
+describe('/api/products method guard', () => {
+  it('rejects POST with 405 and an Allow: GET header', async () => {
+    const req = mockReq('/api/products', 'POST') as NextApiRequest
+    const res = mockRes()
+
+    await handler(req, res)
+    expect(res.statusCode).toBe(405)
+    expect(res.headers['Allow']).toBe('GET')
+    expect((res.body as any).error).toBe('Method not allowed')
+  })
+
+  it('rejects DELETE with 405', async () => {
+    const req = mockReq('/api/products?page=1&size=20', 'DELETE') as NextApiRequest
+    const res = mockRes()
+
+    await handler(req, res)
+    expect(res.statusCode).toBe(405)
+    expect(res.headers['Allow']).toBe('GET')
   })
 })

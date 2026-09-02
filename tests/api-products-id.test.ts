@@ -1,10 +1,8 @@
 import { describe, it, expect, beforeAll } from 'vitest'
-import { PrismaClient } from '@prisma/client'
 import faker from 'faker'
 import { NextApiRequest, NextApiResponse } from 'next'
 import handler from '../pages/api/products/[id]'
-
-const prisma = new PrismaClient()
+import prisma from '../lib/prisma'
 
 function mockReq(url: string, method = 'GET'): Partial<NextApiRequest> {
   return {
