@@ -96,3 +96,45 @@ describe('GET /api/sellers/[id]', () => {
     expect(body).toHaveProperty('error')
   })
 })
+
+describe('id validation on /api/sellers/[id]', () => {
+  it('returns 422 for a trailing-garbage id like 9abc', async () => {
+    const req = mockReq('/api/sellers/9abc') as NextApiRequest
+    const res = mockRes()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(422)
+    expect(res.body as any).toHaveProperty('error', 'Invalid id')
+  })
+
+  it('returns 422 for a decimal id like 9.7', async () => {
+    const req = mockReq('/api/sellers/9.7') as NextApiRequest
+    const res = mockRes()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(422)
+  })
+
+  it('returns 422 for zero and for a negative id', async () => {
+    for (const bad of ['0', '-1']) {
+      const req = mockReq(`/api/sellers/${bad}`) as NextApiRequest
+      const res = mockRes()
+
+      await handler(req, res)
+
+      expect(res.statusCode).toBe(422)
+    }
+  })
+
+  it('returns 405 for a POST, even with a malformed id', async () => {
+    const req = mockReq('/api/sellers/9abc', 'POST') as NextApiRequest
+    const res = mockRes()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(405)
+    expect(res.body as any).toHaveProperty('error')
+  })
+})
