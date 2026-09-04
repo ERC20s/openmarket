@@ -121,6 +121,34 @@ export function buildStorefrontHref(input: ProductsQueryInput = {}): string {
   return search ? `/?${search}` : '/'
 }
 
+/**
+ * The browser URL for one product: '/products/7' with the storefront state
+ * appended, so the detail page can read the list the visitor came from back
+ * with parseProductsQuery and send them to the exact page and filters again.
+ *
+ * Only the parts that differ from the defaults are carried, exactly as
+ * buildStorefrontHref does, so a product opened from a clean first page is a
+ * clean '/products/7'.
+ *
+ * An id that is not a positive integer is not a product the API can answer for
+ * (pages/api/products/[id].ts answers 422 'Invalid id' on it), so rather than
+ * link to /products/NaN this falls back to the storefront href for the same
+ * state — a bad row in the list can never produce a broken link.
+ */
+export function buildProductHref(
+  id: number | string | null | undefined,
+  input: ProductsQueryInput = {}
+): string {
+  const productId = toInt(id)
+  if (productId === null || productId < 1) return buildStorefrontHref(input)
+
+  const href = buildStorefrontHref(input)
+  const queryIndex = href.indexOf('?')
+  const search = queryIndex === -1 ? '' : href.slice(queryIndex)
+
+  return `/products/${productId}${search}`
+}
+
 /** How many pages `total` rows fill at this size; always at least 1. */
 export function pageCount(total: number, size: number): number {
   if (!Number.isFinite(total) || total <= 0) return 1
