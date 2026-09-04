@@ -149,6 +149,37 @@ export function buildProductHref(
   return `/products/${productId}${search}`
 }
 
+/**
+ * The browser URL for one seller: '/sellers/4' with only the paging that
+ * differs from the defaults, so a seller opened from a storefront row is a
+ * clean '/sellers/4'.
+ *
+ * Only page and size travel here: q and sellerId belong to the storefront
+ * list, and the seller page has exactly one list — that seller's products,
+ * paged by GET /api/sellers/<id>?page=&size=.
+ *
+ * An id that is not a positive integer is not a seller the API can answer for
+ * (pages/api/sellers/[id].ts answers 422 'Invalid id' on it), so rather than
+ * link to /sellers/NaN this falls back to the storefront href for the same
+ * state, exactly as buildProductHref does.
+ */
+export function buildSellerHref(
+  id: number | string | null | undefined,
+  input: ProductsQueryInput = {}
+): string {
+  const sellerId = toInt(id)
+  if (sellerId === null || sellerId < 1) return buildStorefrontHref(input)
+
+  const { page, size } = normalizeProductsQuery(input)
+
+  const params = new URLSearchParams()
+  if (page !== DEFAULT_PAGE) params.set('page', String(page))
+  if (size !== DEFAULT_SIZE) params.set('size', String(size))
+
+  const search = params.toString()
+  return search ? `/sellers/${sellerId}?${search}` : `/sellers/${sellerId}`
+}
+
 /** How many pages `total` rows fill at this size; always at least 1. */
 export function pageCount(total: number, size: number): number {
   if (!Number.isFinite(total) || total <= 0) return 1

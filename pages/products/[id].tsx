@@ -4,6 +4,7 @@ import { useRouter } from 'next/router'
 
 import { formatPrice } from '../../lib/format'
 import {
+  buildSellerHref,
   buildStorefrontHref,
   parseProductsQuery,
   type RouterQueryLike,
@@ -129,10 +130,10 @@ export default function ProductPage() {
 
           <p style={{ fontSize: 13, color: '#6b7280' }}>
             Sold by{' '}
-            {/* Seller pages are not built yet, so the name filters the
-                storefront by seller — the same link the list row uses. */}
+            {/* The name opens the seller page — the same link the storefront
+                row uses. */}
             <Link
-              href={buildStorefrontHref({ sellerId: product.sellerId, size: query.size })}
+              href={buildSellerHref(product.sellerId, { size: query.size })}
               style={{ color: '#7c5cff' }}
             >
               {product.seller?.name ?? `Seller #${product.sellerId}`}

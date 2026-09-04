@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest'
 import {
   buildProductHref,
   buildProductsQuery,
+  buildSellerHref,
   buildStorefrontHref,
   hasFilters,
   normalizeProductsQuery,
@@ -135,6 +136,44 @@ describe('buildProductHref', () => {
       size: 50,
       q: 'mug',
       sellerId: 4,
+    })
+  })
+})
+
+describe('buildSellerHref', () => {
+  it('is a clean /sellers/<id> when nothing differs from the defaults', () => {
+    expect(buildSellerHref(4)).toBe('/sellers/4')
+    expect(buildSellerHref('4', { page: 1, size: 20 })).toBe('/sellers/4')
+  })
+
+  it('carries only the paging, never the storefront search or seller filter', () => {
+    expect(buildSellerHref(4, { page: 2 })).toBe('/sellers/4?page=2')
+    expect(buildSellerHref(4, { size: 50 })).toBe('/sellers/4?size=50')
+    expect(buildSellerHref(4, { page: 3, size: 50 })).toBe('/sellers/4?page=3&size=50')
+    expect(buildSellerHref(4, { q: 'mug', sellerId: 9 })).toBe('/sellers/4')
+  })
+
+  it('clamps the carried paging the same way the storefront link does', () => {
+    expect(buildSellerHref(4, { page: 0, size: 500 })).toBe('/sellers/4?size=100')
+    expect(buildSellerHref(4, { page: 'nope' })).toBe('/sellers/4')
+  })
+
+  it('falls back to the storefront href for an id the API would 422 on', () => {
+    expect(buildSellerHref('abc')).toBe('/')
+    expect(buildSellerHref(0)).toBe('/')
+    expect(buildSellerHref(-3)).toBe('/')
+    expect(buildSellerHref(null)).toBe('/')
+    expect(buildSellerHref(undefined, { q: 'mug' })).toBe('/?q=mug')
+  })
+
+  it('round-trips its paging through parseProductsQuery', () => {
+    const href = buildSellerHref(4, { page: 2, size: 50 })
+    const search = new URLSearchParams(href.slice(href.indexOf('?') + 1))
+    expect(parseProductsQuery(Object.fromEntries(search))).toEqual({
+      page: 2,
+      size: 50,
+      q: '',
+      sellerId: null,
     })
   })
 })
