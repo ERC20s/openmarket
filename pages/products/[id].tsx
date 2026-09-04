@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 
 import { formatPrice } from '../../lib/format'
+import { addLine, readStoredCart, writeStoredCart } from '../../lib/cart'
 import {
   buildSellerHref,
   buildStorefrontHref,
@@ -32,6 +33,9 @@ export default function ProductPage() {
   const router = useRouter()
   const [status, setStatus] = useState<Status>('loading')
   const [product, setProduct] = useState<Product | null>(null)
+  // What the Add to cart button says after a click: nothing yet, the saved
+  // confirmation, or the line that admits storage refused the write.
+  const [added, setAdded] = useState<'idle' | 'added' | 'failed'>('idle')
 
   // Everything after /products/<id> is the storefront state the visitor came
   // from (?q=…&sellerId=…&page=…&size=…), read back with the same parser the
@@ -60,6 +64,8 @@ export default function ProductPage() {
 
     let cancelled = false
     setStatus('loading')
+    // A different product is being shown: the previous "Added" line must go.
+    setAdded('idle')
 
     fetch(`/api/products/${numericId}`)
       .then((res) => {
@@ -89,6 +95,25 @@ export default function ProductPage() {
 
   // Back to the list the visitor came from, filters and page intact.
   const backHref = buildStorefrontHref(query)
+
+  // Add to cart: read what is stored, merge this product in (a repeat click
+  // bumps the quantity rather than adding a second row) and write it back. The
+  // title, price and seller are snapshotted here, so /cart renders with the API
+  // down; nothing throws, because lib/cart.ts swallows a full or disabled store
+  // and reports it with `false` instead.
+  function onAddToCart() {
+    if (!product) return
+
+    const next = addLine(readStoredCart(), {
+      productId: product.id,
+      title: product.title,
+      price_cents: product.price_cents,
+      sellerId: product.sellerId,
+      sellerName: product.seller?.name ?? `Seller #${product.sellerId}`,
+    })
+
+    setAdded(writeStoredCart(next) ? 'added' : 'failed')
+  }
 
   return (
     <main style={{ font: '15px system-ui, sans-serif', maxWidth: 720, margin: '0 auto', padding: '32px 16px' }}>
@@ -140,8 +165,40 @@ export default function ProductPage() {
             </Link>
           </p>
 
-          {/* The cart and the checkout stub hang off this page next; there is
-              deliberately no Buy control yet. */}
+          {/* Add to cart writes through lib/cart.ts to localStorage; the
+              checkout stub hangs off /cart next. */}
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 20 }}>
+            <button
+              type="button"
+              onClick={onAddToCart}
+              style={{
+                font: 'inherit',
+                padding: '8px 16px',
+                border: 0,
+                borderRadius: 999,
+                background: '#7c5cff',
+                color: '#fff',
+                cursor: 'pointer',
+              }}
+            >
+              Add to cart
+            </button>
+
+            {added === 'added' && (
+              <span role="status" style={{ fontSize: 13, color: '#059669' }}>
+                Added.{' '}
+                <Link href="/cart" style={{ color: '#7c5cff' }}>
+                  View cart
+                </Link>
+              </span>
+            )}
+
+            {added === 'failed' && (
+              <span role="alert" style={{ fontSize: 13, color: '#b91c1c' }}>
+                Could not save your cart — storage is full or disabled in this browser.
+              </span>
+            )}
+          </div>
         </article>
       )}
     </main>
