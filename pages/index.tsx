@@ -6,6 +6,7 @@ import { formatPrice } from '../lib/format'
 import {
   buildProductHref,
   buildProductsQuery,
+  buildSellerHref,
   buildStorefrontHref,
   hasFilters,
   pageCount,
@@ -142,7 +143,19 @@ export default function Home() {
       {filtered && (
         <p style={{ color: '#6b7280', fontSize: 13, marginTop: 0 }}>
           {query.q && <>Search: &ldquo;{query.q}&rdquo;. </>}
-          {query.sellerId !== null && <>Seller #{query.sellerId}. </>}
+          {query.sellerId !== null && (
+            <>
+              {/* The banner only knows the id, so it offers the seller page,
+                  which knows the name. */}
+              <Link
+                href={buildSellerHref(query.sellerId, { size: query.size })}
+                style={{ color: '#7c5cff' }}
+              >
+                Seller #{query.sellerId}
+              </Link>
+              .{' '}
+            </>
+          )}
           <Link href={buildStorefrontHref({ size: query.size })} style={{ color: '#7c5cff' }}>
             Clear filters
           </Link>
@@ -211,10 +224,11 @@ export default function Home() {
                   <div style={{ color: '#6b7280', fontSize: 13 }}>{product.description}</div>
                 )}
                 <div style={{ fontSize: 12, marginTop: 4 }}>
-                  {/* Seller pages are not built yet, so the name filters this
-                      list by seller instead of dumping the raw API JSON. */}
+                  {/* The seller name opens that seller's page; the current page
+                      size travels with it, the search and page do not — the
+                      seller page is its own list. */}
                   <Link
-                    href={buildStorefrontHref({ sellerId: product.sellerId, size: query.size })}
+                    href={buildSellerHref(product.sellerId, { size: query.size })}
                     style={{ color: '#7c5cff' }}
                   >
                     {product.seller?.name ?? `Seller #${product.sellerId}`}
