@@ -55,7 +55,8 @@ Running
 - The cart page at /cart (pages/cart.tsx) lists the saved lines grouped by
   seller, with a subtotal per seller, a quantity box and Remove per line, a
   grand total and an "Empty the cart" control. An empty cart links back to the
-  storefront; checkout itself is not built yet. The storefront header carries a
+  storefront, and a filled one carries a "Review and check out" link to
+  /checkout. The storefront header carries a
   "Cart (n)" link, and both pages only read storage inside an effect, so the
   first render always matches the server markup (no hydration mismatch).
 - lib/cart.ts holds the cart logic as pure functions over an array of lines
@@ -69,6 +70,14 @@ Running
   of the product at the moment it was added, so it renders with the API down,
   and a price that changes on the server stays stale until a checkout re-reads
   it from GET /api/products/<id>.
+- The checkout review page at /checkout (pages/checkout.tsx) reads the saved
+  cart, posts it to POST /api/checkout and renders only what the server sends
+  back: lines grouped by seller with subtotals, a grand total and, when the
+  cart disagreed with the marketplace, a warning list naming every product
+  whose price moved or that is no longer for sale. It has its own line for
+  loading, for an empty cart and for a failed request, and it says plainly that
+  nothing has been ordered or paid for — order storage and payment are later
+  work.
 - lib/products-query.ts is the single place that turns that state into the API
   URL (buildProductsQuery) and reads it back off next/router (parseProductsQuery).
   It clamps page >= 1, size to 1..100 and q to 100 characters — the same bounds
@@ -99,6 +108,12 @@ Testing
   shape with the product count flattened, the name ordering and 100-row cap,
   that the select carries no email, 405 with Allow: GET on a POST and JSON 500
   when the query rejects.
+- tests/api-checkout.test.ts covers POST /api/checkout: pricing from the
+  database rather than from the body, per-seller grouping and the cents total,
+  the price_changed and product_missing problems, quantity clamping and the
+  merge of a repeated product, a raw JSON string body, 422 for ten shapes of
+  junk (including more than 50 lines), 405 with Allow: POST on a GET and JSON
+  500 when the query rejects.
 - Each test sets what a spy resolves to and asserts the response plus the query
   arguments (skip, take, orderBy, select). Mocked tests do not prove SQL is
   valid, so a schema change still needs a real migrate.
@@ -113,5 +128,19 @@ API
   /api/sellers/[id], the query selects id, name and the product count only - the
   email column is never returned. The seller picker on / drives this route.
 - GET /api/sellers/[id]?page=1&size=20 returns JSON { seller, products, total, page, size } for the requested seller id. The seller carries id and name only - the email column is never returned. A non-numeric or non-positive id answers 422 { error: 'Invalid id' } and an unknown id answers 404 { error: 'Seller not found' }. The seller page at /sellers/[id] drives exactly this route.
-- Every API route is GET-only: any other method answers 405 with an Allow: GET header and JSON { error: 'Method not allowed' }.
+- POST /api/checkout takes { lines: [{ productId, quantity, price_cents? }] }
+  and returns a quote priced from the database:
+  { lines, sellers, total, count, problems, limits }. Each line carries the
+  stored title, price_cents, quantity, line_total and seller; sellers is the
+  same lines grouped with a subtotal each; total and every amount are whole
+  cents. The client's price_cents is only a claim - it is never charged, and a
+  line whose stored price differs comes back in problems as
+  { code: 'price_changed', productId, was, now }; a product that no longer
+  exists comes back as { code: 'product_missing', productId } and is left out
+  of the total. Quantities are clamped to 1..99 and a repeated productId is
+  merged, rather than answering an error. A body that is not an array of lines,
+  an empty cart, more than 50 lines or a productId that is not a positive
+  integer answers 422. Nothing is persisted and no payment is taken: there is
+  no Order model yet.
+- Every read API route is GET-only and /api/checkout is POST-only: any other method answers 405 with an Allow header naming the one that is supported and JSON { error: 'Method not allowed' }.
 - Every API route answers JSON, including failures: an unexpected exception is logged with console.error on the server and answered as 500 { error: 'Internal server error' }, never an HTML error page or a stack trace.

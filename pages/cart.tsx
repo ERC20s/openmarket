@@ -199,11 +199,28 @@ export default function CartPage() {
             <strong>{formatPrice(total)}</strong>
           </p>
 
+          {/* Prices here are the snapshot taken when each product was added;
+              /checkout posts the cart to POST /api/checkout, which re-prices
+              every line from the database and names anything that moved. */}
+          <p style={{ marginTop: 16 }}>
+            <Link
+              href="/checkout"
+              style={{
+                display: 'inline-block',
+                background: '#7c5cff',
+                color: '#fff',
+                borderRadius: 999,
+                padding: '8px 18px',
+                textDecoration: 'none',
+              }}
+            >
+              Review and check out
+            </Link>
+          </p>
+
           <p style={{ fontSize: 13, color: '#6b7280' }}>
-            {/* The checkout stub is the next piece of the marketplace; prices
-                here are the snapshot taken when each product was added, and a
-                checkout re-reads them from GET /api/products/&lt;id&gt;. */}
-            Checkout is not built yet.{' '}
+            Prices above are what they were when each product was added; checkout
+            confirms them against the marketplace.{' '}
             <button
               type="button"
               onClick={() => commit(clearCart())}

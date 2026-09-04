@@ -47,11 +47,14 @@ export function resetPrismaSpies() {
 // The request/response doubles that used to be copy-pasted into every test
 // file. Deliberately untyped at the edges: `next` is a peer of the handlers,
 // and the tests only need the three members the handlers touch.
-export function mockReq(url: string, method = 'GET'): any {
+// `body` is what Next.js would have parsed off a POST; GET handlers ignore it,
+// so it stays optional and every existing call site keeps working.
+export function mockReq(url: string, method = 'GET', body?: any): any {
   return {
     url,
     method,
     headers: { host: 'localhost' },
+    body,
   }
 }
 
