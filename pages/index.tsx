@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 
 import { formatPrice } from '../lib/format'
+import { CART_CHANGED_EVENT, CART_STORAGE_KEY, cartCount, readStoredCart } from '../lib/cart'
 import {
   buildProductHref,
   buildProductsQuery,
@@ -55,6 +56,9 @@ export default function Home() {
   // The seller facet. An empty list means "no picker": the storefront must keep
   // working when /api/sellers fails, so a failure is not an error state here.
   const [sellers, setSellers] = useState<SellerOption[]>([])
+  // How many items are in the cart. Starts at 0 so the first client render
+  // matches the server markup; the effect below fills it in after hydration.
+  const [cartItems, setCartItems] = useState(0)
 
   // The URL is the single source of truth for search, seller and page: every
   // link and the search form write to it, and the fetch below reads it back.
@@ -126,6 +130,26 @@ export default function Home() {
     }
   }, [])
 
+  // The cart count. localStorage does not exist on the server, so it is only
+  // ever read inside this effect; a write from another page of the app fires
+  // CART_CHANGED_EVENT and another tab fires 'storage'.
+  useEffect(() => {
+    function refresh() {
+      setCartItems(cartCount(readStoredCart()))
+    }
+    function onStorage(event: StorageEvent) {
+      if (event.key === null || event.key === CART_STORAGE_KEY) refresh()
+    }
+
+    refresh()
+    window.addEventListener(CART_CHANGED_EVENT, refresh)
+    window.addEventListener('storage', onStorage)
+    return () => {
+      window.removeEventListener(CART_CHANGED_EVENT, refresh)
+      window.removeEventListener('storage', onStorage)
+    }
+  }, [])
+
   const filtered = hasFilters(query)
   // The list knows the name the filter banner could only show as an id. A
   // sellerId typed into the URL that is not in the list stays unresolved.
@@ -154,7 +178,14 @@ export default function Home() {
 
   return (
     <main style={{ font: '15px system-ui, sans-serif', maxWidth: 720, margin: '0 auto', padding: '32px 16px' }}>
-      <h1 style={{ fontSize: 24, marginBottom: 4 }}>openmarket</h1>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'baseline' }}>
+        <h1 style={{ fontSize: 24, marginBottom: 4, flex: 1 }}>openmarket</h1>
+        {/* The count is 0 until the effect has read localStorage, so the link
+            is always here and never causes a hydration mismatch. */}
+        <Link href="/cart" style={{ color: '#7c5cff', fontSize: 13 }}>
+          Cart ({cartItems})
+        </Link>
+      </div>
       <p style={{ color: '#6b7280', marginTop: 0 }}>A multi-seller marketplace.</p>
 
       <form onSubmit={onSearch} style={{ display: 'flex', gap: 8, margin: '16px 0' }}>

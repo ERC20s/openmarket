@@ -47,6 +47,28 @@ Running
   the link and carries only page and size (never q or sellerId); an id that is
   not a positive integer falls back to the storefront href, so a bad row can
   never produce a broken link.
+- Add to cart on a product page (pages/products/[id].tsx) writes the product
+  into a cart kept in this browser's localStorage under openmarket.cart.v1. A
+  repeat click bumps the quantity on the same line instead of adding a second
+  one, and the button says so; if storage is full or disabled the page says that
+  too, rather than throwing.
+- The cart page at /cart (pages/cart.tsx) lists the saved lines grouped by
+  seller, with a subtotal per seller, a quantity box and Remove per line, a
+  grand total and an "Empty the cart" control. An empty cart links back to the
+  storefront; checkout itself is not built yet. The storefront header carries a
+  "Cart (n)" link, and both pages only read storage inside an effect, so the
+  first render always matches the server markup (no hydration mismatch).
+- lib/cart.ts holds the cart logic as pure functions over an array of lines
+  (addLine, setQuantity — 0 removes, removeLine, clearCart, cartCount,
+  cartSubtotal, groupBySeller, parseCart/serializeCart), plus the two storage
+  helpers readStoredCart/writeStoredCart, which take an optional Storage-like
+  object (the tests pass one) and default to window.localStorage. Quantities are
+  clamped to 1..99, exactly as normalizeProductsQuery clamps size to 1..100, a
+  malformed line from storage is dropped rather than rendered, and neither
+  helper ever throws — a refused write returns false. A cart line is a snapshot
+  of the product at the moment it was added, so it renders with the API down,
+  and a price that changes on the server stays stale until a checkout re-reads
+  it from GET /api/products/<id>.
 - lib/products-query.ts is the single place that turns that state into the API
   URL (buildProductsQuery) and reads it back off next/router (parseProductsQuery).
   It clamps page >= 1, size to 1..100 and q to 100 characters — the same bounds
@@ -68,6 +90,11 @@ Testing
   /sellers/<id> seller links including the bad-id fallback). There
   is no DOM test runner here, so the storefront and detail pages themselves are
   only covered through that helper — check them by hand with npm run dev.
+- tests/cart.test.ts covers lib/cart.ts: merging a repeat add, clamping to
+  1..99, setting a quantity to 0 to remove, per-seller grouping and subtotals,
+  the JSON round trip and rejecting junk from storage, and the storage helpers
+  against an in-memory Storage stand-in (including a quota error answering
+  false). It needs no DOM and no database.
 - tests/api-sellers.test.ts covers GET /api/sellers: the { sellers, total }
   shape with the product count flattened, the name ordering and 100-row cap,
   that the select carries no email, 405 with Allow: GET on a POST and JSON 500
