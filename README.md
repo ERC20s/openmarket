@@ -7,6 +7,9 @@ Local development and DB
 - Generate Prisma client: npm run prisma:generate
 - Create migration and DB: npm run prisma:migrate
 - Seed the DB: npm run prisma:seed
+- The schema now carries Order and OrderItem as well as Seller and Product, so
+  an existing clone must re-run npm run prisma:generate && npm run prisma:migrate
+  once before placing an order.
 
 Running
 
@@ -75,9 +78,29 @@ Running
   back: lines grouped by seller with subtotals, a grand total and, when the
   cart disagreed with the marketplace, a warning list naming every product
   whose price moved or that is no longer for sale. It has its own line for
-  loading, for an empty cart and for a failed request, and it says plainly that
-  nothing has been ordered or paid for — order storage and payment are later
-  work.
+  loading, for an empty cart and for a failed request. Its "Place order" button
+  posts the same lines to POST /api/orders: on success it empties the cart and
+  goes to /orders/<reference>; on 409 (a price moved or a product was delisted
+  since the review) it writes nothing, shows the reason and re-prices the cart
+  so the warning list names what changed.
+- The confirmation page at /orders/<reference> (pages/orders/[id].tsx) fetches
+  GET /api/orders/<reference> and shows the reference, the status, the bought
+  lines grouped by seller with subtotals and the order total. It has the same
+  four states as the other detail pages: loading, "Order not found" for the
+  API's 404 or 422, a failed request, and the order. It reads nothing from the
+  cart — the order lives on the server.
+- lib/orders.ts is the order state machine as pure functions: ORDER_STATUSES
+  (pending, paid, shipped, delivered, cancelled), canTransition, applyTransition
+  (which gives back either the new status or the reason it was refused),
+  nextStatuses, isTerminal, describeStatus, plus newOrderReference /
+  isOrderReference for the public "om_" + 24 hex reference. pending may go to
+  paid or cancelled, paid to shipped or cancelled, shipped to delivered; nothing
+  moves once it is delivered or cancelled.
+- lib/quote.ts holds the cart pricing that /api/checkout and /api/orders share
+  (readBody, normalizeRequestedLines, requestedIds, priceQuote,
+  groupLinesBySeller). It is pure — the route does the database read and hands
+  the rows in — so the order is written at exactly the total the review page
+  quoted.
 - lib/products-query.ts is the single place that turns that state into the API
   URL (buildProductsQuery) and reads it back off next/router (parseProductsQuery).
   It clamps page >= 1, size to 1..100 and q to 100 characters — the same bounds
@@ -114,6 +137,18 @@ Testing
   merge of a repeated product, a raw JSON string body, 422 for ten shapes of
   junk (including more than 50 lines), 405 with Allow: POST on a GET and JSON
   500 when the query rejects.
+- tests/orders.test.ts covers lib/orders.ts (the allowed transitions, the
+  refusals with their messages, the terminal statuses, the reference format and
+  its rejection of a bare row id) and lib/quote.ts (body reading, quantity
+  clamping and merging, the 422 reasons, pricing from the rows rather than the
+  claim, and per-seller grouping). It needs no DOM and no database.
+- tests/api-orders.test.ts covers POST /api/orders (the written order and its
+  item snapshots, 409 with nothing written when a price moved or a product
+  vanished, the id-only query with no email, a raw JSON string body, seven
+  shapes of 422, 405 with Allow: POST and JSON 500 when the write rejects) and
+  GET /api/orders/[id] (lookup by reference with per-seller grouping, 422 for a
+  row id or a malformed reference, 404 for an unknown one, 405 with Allow: GET
+  and JSON 500).
 - Each test sets what a spy resolves to and asserts the response plus the query
   arguments (skip, take, orderBy, select). Mocked tests do not prove SQL is
   valid, so a schema change still needs a real migrate.
@@ -140,7 +175,26 @@ API
   of the total. Quantities are clamped to 1..99 and a repeated productId is
   merged, rather than answering an error. A body that is not an array of lines,
   an empty cart, more than 50 lines or a productId that is not a positive
-  integer answers 422. Nothing is persisted and no payment is taken: there is
-  no Order model yet.
-- Every read API route is GET-only and /api/checkout is POST-only: any other method answers 405 with an Allow header naming the one that is supported and JSON { error: 'Method not allowed' }.
+  integer answers 422. Nothing is persisted and no payment is taken by this
+  route: it only quotes.
+- POST /api/orders takes the same { lines: [...] } body, prices it again through
+  lib/quote.ts and writes the order. It answers 201
+  { reference, status, total, count, lines, sellers, createdAt } with status
+  "pending". If the re-pricing turns up any problem - a price_changed or a
+  product_missing - it answers 409 with those problems and the fresh quote and
+  writes nothing, so the buyer re-reviews instead of being charged a total they
+  never saw. The same 422 rules as /api/checkout apply to a malformed body.
+  Order and OrderItem rows snapshot the title, price, quantity, line total and
+  seller name, so an order still reads correctly after a product is renamed,
+  re-priced or delisted. No payment is taken: the order sits at pending.
+- GET /api/orders/[reference] returns one order as
+  { reference, status, total, count, createdAt, lines, sellers }. Orders are
+  looked up by their public reference ("om_" + 24 hex) and never by row id, so
+  nobody can walk /api/orders/1, /api/orders/2 through other people's orders; a
+  reference of any other shape answers 422 { error: 'Invalid reference' } and an
+  unknown one answers 404 { error: 'Order not found' }. The order carries no
+  buyer contact detail, so there is nothing on it to leak. The confirmation page
+  at /orders/[id] drives exactly this route.
+- Every read API route is GET-only and /api/checkout and /api/orders are
+  POST-only: any other method answers 405 with an Allow header naming the one that is supported and JSON { error: 'Method not allowed' }.
 - Every API route answers JSON, including failures: an unexpected exception is logged with console.error on the server and answered as 500 { error: 'Internal server error' }, never an HTML error page or a stack trace.

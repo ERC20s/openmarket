@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/router'
 
 import { formatPrice } from '../lib/format'
-import { cartCount, readStoredCart, type CartLine } from '../lib/cart'
+import { cartCount, clearCart, readStoredCart, writeStoredCart, type CartLine } from '../lib/cart'
 import { buildProductHref, buildSellerHref } from '../lib/products-query'
 
 // The review step. Everything money-related on this page comes back from
@@ -10,6 +11,11 @@ import { buildProductHref, buildSellerHref } from '../lib/products-query'
 // whole point of the round trip: a line added last week is priced at today's
 // database price, and anything that changed is listed as a problem before the
 // buyer is asked to confirm.
+//
+// Place order posts the same lines to POST /api/orders, which prices them once
+// more through the same helpers (lib/quote.ts): if anything moved in between it
+// answers 409, this page re-reviews and nothing is written. On success the cart
+// is emptied and the buyer lands on /orders/<reference>.
 //
 // As on /cart, storage is read inside an effect so the first client render
 // matches the server markup.
@@ -51,10 +57,16 @@ type State =
   | { status: 'loading' }
   | { status: 'empty' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; quote: Quote; cartTotal: number }
+  | { status: 'ready'; quote: Quote; cartTotal: number; lines: CartLine[] }
 
 export default function CheckoutPage() {
+  const router = useRouter()
   const [state, setState] = useState<State>({ status: 'loading' })
+  // Bumped after a 409 so the quote is fetched again and the warning list shows
+  // exactly what moved.
+  const [reload, setReload] = useState(0)
+  const [placing, setPlacing] = useState(false)
+  const [placeError, setPlaceError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -109,6 +121,7 @@ export default function CheckoutPage() {
             problems: Array.isArray(data.problems) ? data.problems : [],
           },
           cartTotal,
+          lines,
         })
       } catch {
         if (!cancelled) {
@@ -121,7 +134,57 @@ export default function CheckoutPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [reload])
+
+  async function placeOrder() {
+    if (state.status !== 'ready' || placing) return
+
+    setPlacing(true)
+    setPlaceError(null)
+
+    const payload = {
+      lines: state.lines.map((line) => ({
+        productId: line.productId,
+        quantity: line.quantity,
+        price_cents: line.price_cents,
+      })),
+    }
+
+    try {
+      const response = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await response.json().catch(() => null)
+
+      // The cart moved between the review and the click: nothing was written.
+      // Re-price so the buyer sees which line changed, and let them try again.
+      if (response.status === 409) {
+        setPlacing(false)
+        setPlaceError(
+          (data && data.error) ||
+            'The cart changed since it was reviewed — check the updated prices below and place the order again.'
+        )
+        setReload((count) => count + 1)
+        return
+      }
+
+      if (!response.ok || !data || typeof data.reference !== 'string') {
+        setPlacing(false)
+        setPlaceError((data && data.error) || `Could not place the order (HTTP ${response.status}).`)
+        return
+      }
+
+      // The order is on the server now; the browser cart has done its job.
+      writeStoredCart(clearCart())
+      // `placing` stays true through the navigation so the button cannot fire twice.
+      router.push(`/orders/${encodeURIComponent(data.reference)}`)
+    } catch {
+      setPlacing(false)
+      setPlaceError('Could not reach the order service. Is the server running?')
+    }
+  }
 
   return (
     <main style={{ font: '15px system-ui, sans-serif', maxWidth: 720, margin: '0 auto', padding: '32px 16px' }}>
@@ -196,6 +259,12 @@ export default function CheckoutPage() {
             </section>
           )}
 
+          {placeError && (
+            <p role="alert" style={{ color: '#b91c1c', fontSize: 14 }}>
+              {placeError}
+            </p>
+          )}
+
           {state.quote.lines.length === 0 && (
             <p style={{ color: '#6b7280' }}>
               Nothing in your cart is still for sale.{' '}
@@ -268,9 +337,29 @@ export default function CheckoutPage() {
                 </p>
               )}
 
+              <p style={{ marginTop: 16 }}>
+                <button
+                  type="button"
+                  onClick={placeOrder}
+                  disabled={placing}
+                  style={{
+                    font: 'inherit',
+                    background: placing ? '#c4b5fd' : '#7c5cff',
+                    color: '#fff',
+                    border: 0,
+                    borderRadius: 999,
+                    padding: '10px 22px',
+                    cursor: placing ? 'default' : 'pointer',
+                  }}
+                >
+                  {placing ? 'Placing your order…' : `Place order — ${formatPrice(state.quote.total)}`}
+                </button>
+              </p>
+
               <p style={{ fontSize: 13, color: '#6b7280' }}>
-                Nothing has been ordered or paid for yet: this page only prices the cart. Placing
-                the order and paying for it are the next pieces of the marketplace.
+                Placing the order records it at these prices and empties your cart. No payment is
+                taken yet: the order is saved as pending, and taking the money is the next piece of
+                the marketplace.
               </p>
             </>
           )}
