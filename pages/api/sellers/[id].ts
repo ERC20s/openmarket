@@ -11,6 +11,17 @@ const prisma = (process.env.NODE_ENV === 'production')
   : (globalThis as any).__prisma ?? ((globalThis as any).__prisma = new PrismaClient())
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  try {
+    await getSeller(req, res)
+  } catch (err) {
+    // Details stay in the server log; the client gets a stable JSON shape
+    // instead of Next's HTML error page or a stack trace.
+    console.error('GET /api/sellers/[id] failed', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+}
+
+async function getSeller(req: NextApiRequest, res: NextApiResponse) {
   // Expect URLs like /api/sellers/1
   const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
   const parts = url.pathname.split('/')
