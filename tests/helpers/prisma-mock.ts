@@ -22,6 +22,7 @@ export const prismaSpies = {
     findUnique: vi.fn(),
   },
   seller: {
+    findMany: vi.fn(),
     findUnique: vi.fn(),
   },
 }
@@ -39,6 +40,7 @@ export function resetPrismaSpies() {
   prismaSpies.product.count.mockReset().mockResolvedValue(0)
   prismaSpies.product.findMany.mockReset().mockResolvedValue([])
   prismaSpies.product.findUnique.mockReset().mockResolvedValue(null)
+  prismaSpies.seller.findMany.mockReset().mockResolvedValue([])
   prismaSpies.seller.findUnique.mockReset().mockResolvedValue(null)
 }
 

@@ -34,6 +34,15 @@ type ProductsResponse = {
   size: number
 }
 
+// The shape GET /api/sellers returns: { id, name } plus how many products the
+// seller has (never the email column), ordered by name and capped at 100 rows.
+type SellerOption = { id: number; name: string; productCount?: number }
+
+type SellersResponse = {
+  sellers: SellerOption[]
+  total: number
+}
+
 // Four distinct states, so an empty shop never looks like a broken one:
 // loading, error, loaded-but-empty, loaded-with-rows.
 type Status = 'loading' | 'error' | 'ready'
@@ -43,6 +52,9 @@ export default function Home() {
   const [status, setStatus] = useState<Status>('loading')
   const [items, setItems] = useState<Product[]>([])
   const [total, setTotal] = useState(0)
+  // The seller facet. An empty list means "no picker": the storefront must keep
+  // working when /api/sellers fails, so a failure is not an error state here.
+  const [sellers, setSellers] = useState<SellerOption[]>([])
 
   // The URL is the single source of truth for search, seller and page: every
   // link and the search form write to it, and the fetch below reads it back.
@@ -89,7 +101,36 @@ export default function Home() {
     // values must not fire a second request.
   }, [router.isReady, query.page, query.size, query.q, query.sellerId])
 
+  // The seller list never depends on the search or the page, so it is fetched
+  // once. A failed fetch leaves the list empty and the picker hidden — search
+  // and paging carry on, and ?sellerId=<id> typed by hand still works.
+  useEffect(() => {
+    let cancelled = false
+
+    fetch('/api/sellers')
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json() as Promise<SellersResponse>
+      })
+      .then((data) => {
+        if (cancelled) return
+        setSellers(Array.isArray(data.sellers) ? data.sellers : [])
+      })
+      .catch(() => {
+        if (cancelled) return
+        setSellers([])
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const filtered = hasFilters(query)
+  // The list knows the name the filter banner could only show as an id. A
+  // sellerId typed into the URL that is not in the list stays unresolved.
+  const selectedSeller =
+    query.sellerId === null ? null : sellers.find((seller) => seller.id === query.sellerId) ?? null
   const pages = pageCount(total, query.size)
   const firstRow = total === 0 ? 0 : (query.page - 1) * query.size + 1
   const lastRow = firstRow === 0 ? 0 : firstRow + items.length - 1
@@ -99,6 +140,15 @@ export default function Home() {
     // A new search always starts at page 1; the seller filter survives it.
     router.push(
       buildStorefrontHref({ q: searchText, sellerId: query.sellerId, size: query.size, page: 1 })
+    )
+  }
+
+  function onSellerChange(value: string) {
+    // '' is the "All sellers" option; picking a seller keeps the search and the
+    // page size, and starts again at page 1 like any other new filter.
+    const sellerId = value === '' ? null : parseInt(value, 10)
+    router.push(
+      buildStorefrontHref({ q: query.q, sellerId, size: query.size, page: 1 })
     )
   }
 
@@ -140,18 +190,56 @@ export default function Home() {
         </button>
       </form>
 
+      {/* The seller facet. Hidden entirely when the list is empty or its fetch
+          failed, so the storefront never shows a picker with nothing in it. */}
+      {sellers.length > 0 && (
+        <div style={{ margin: '0 0 16px' }}>
+          <label htmlFor="sellerId" style={{ color: '#6b7280', fontSize: 13, marginRight: 8 }}>
+            Seller
+          </label>
+          <select
+            id="sellerId"
+            name="sellerId"
+            aria-label="Filter by seller"
+            value={query.sellerId === null ? '' : String(query.sellerId)}
+            onChange={(event) => onSellerChange(event.target.value)}
+            style={{
+              font: 'inherit',
+              padding: '8px 10px',
+              border: '1px solid #d1d5db',
+              borderRadius: 8,
+              background: '#fff',
+            }}
+          >
+            <option value="">All sellers</option>
+            {/* A sellerId from a hand-typed URL that is not in the list still
+                needs an option, or the select would show the wrong seller. */}
+            {query.sellerId !== null && selectedSeller === null && (
+              <option value={String(query.sellerId)}>Seller #{query.sellerId}</option>
+            )}
+            {sellers.map((seller) => (
+              <option key={seller.id} value={String(seller.id)}>
+                {seller.name}
+                {typeof seller.productCount === 'number' ? ` (${seller.productCount})` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {filtered && (
         <p style={{ color: '#6b7280', fontSize: 13, marginTop: 0 }}>
           {query.q && <>Search: &ldquo;{query.q}&rdquo;. </>}
           {query.sellerId !== null && (
             <>
-              {/* The banner only knows the id, so it offers the seller page,
-                  which knows the name. */}
+              {/* The name comes from the /api/sellers list when it loaded;
+                  the id is the fallback, and either way the banner links to
+                  that seller's page. */}
               <Link
                 href={buildSellerHref(query.sellerId, { size: query.size })}
                 style={{ color: '#7c5cff' }}
               >
-                Seller #{query.sellerId}
+                {selectedSeller?.name ?? `Seller #${query.sellerId}`}
               </Link>
               .{' '}
             </>
