@@ -22,6 +22,15 @@ Running
   /?page=2 (and /?size=50). The search form and the Prev/Next links write those
   params, a seller name links to /?sellerId=<id> rather than the raw API route,
   and the page re-fetches only when the URL changes — never on a keystroke.
+- Each product title on / links to its detail page at /products/<id>
+  (pages/products/[id].tsx), which fetches GET /api/products/<id> in the browser
+  and shows the title, price, description and seller. It has its own line for
+  loading, for a product that does not exist (the API's 404 or 422 answers show
+  "Product not found", not the red error banner) and for a failed request.
+- The detail link carries the current search, seller and page
+  (/products/7?q=mug&sellerId=4&page=2), so "Back to results" returns to the
+  same filtered page of the list; buildProductHref in lib/products-query.ts
+  builds it and parseProductsQuery reads it back.
 - lib/products-query.ts is the single place that turns that state into the API
   URL (buildProductsQuery) and reads it back off next/router (parseProductsQuery).
   It clamps page >= 1, size to 1..100 and q to 100 characters — the same bounds
@@ -39,8 +48,9 @@ Testing
 - tests/format.test.ts covers formatPrice (0, 5, 1234) so the storefront's money
   rendering is unit-tested without a DOM test runner.
 - tests/products-query.test.ts covers lib/products-query.ts (trimming, clamping,
-  encoding, seller filter, page links). There is no DOM test runner here, so the
-  storefront page itself is only covered through that helper.
+  encoding, seller filter, page links and the /products/<id> detail links). There
+  is no DOM test runner here, so the storefront and detail pages themselves are
+  only covered through that helper — check them by hand with npm run dev.
 - Each test sets what a spy resolves to and asserts the response plus the query
   arguments (skip, take, orderBy, select). Mocked tests do not prove SQL is
   valid, so a schema change still needs a real migrate.
@@ -49,6 +59,7 @@ API
 
 - GET /api/products?page=1&size=20 returns JSON { items, total, page, size }. Ensure the DB is seeded first.
 - GET /api/products also accepts q (matched against title and description, up to 100 characters) and sellerId (a positive integer); out-of-range page, size, q or sellerId answers 422. The storefront at / drives exactly these params.
+- GET /api/products/[id] returns one product as JSON with its seller as { id, name }; a non-numeric or non-positive id answers 422 { error: 'Invalid id' } and an unknown id answers 404 { error: 'Product not found' }. The detail page at /products/[id] drives exactly this route.
 - GET /api/sellers/[id]?page=1&size=20 returns JSON { seller, products, total, page, size } for the requested seller id. The seller carries id and name only - the email column is never returned.
 - Every API route is GET-only: any other method answers 405 with an Allow: GET header and JSON { error: 'Method not allowed' }.
 - Every API route answers JSON, including failures: an unexpected exception is logged with console.error on the server and answered as 500 { error: 'Internal server error' }, never an HTML error page or a stack trace.

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 
 import {
+  buildProductHref,
   buildProductsQuery,
   buildStorefrontHref,
   hasFilters,
@@ -96,6 +97,45 @@ describe('buildStorefrontHref', () => {
     expect(buildStorefrontHref({ sellerId: 4 })).toBe('/?sellerId=4')
     expect(buildStorefrontHref({ q: 'mug', page: 2 })).toBe('/?q=mug&page=2')
     expect(buildStorefrontHref({ size: 50 })).toBe('/?size=50')
+  })
+})
+
+describe('buildProductHref', () => {
+  it('is a clean /products/<id> when nothing differs from the defaults', () => {
+    expect(buildProductHref(7)).toBe('/products/7')
+    expect(buildProductHref('7', { page: 1, size: 20 })).toBe('/products/7')
+  })
+
+  it('carries the storefront state so the back link can restore it', () => {
+    expect(buildProductHref(7, { q: 'mug', page: 2 })).toBe('/products/7?q=mug&page=2')
+    expect(buildProductHref(7, { sellerId: 4 })).toBe('/products/7?sellerId=4')
+    expect(buildProductHref(7, { q: 'red & blue', sellerId: 4, page: 3, size: 50 })).toBe(
+      '/products/7?q=red+%26+blue&sellerId=4&page=3&size=50'
+    )
+  })
+
+  it('clamps the carried state the same way the storefront link does', () => {
+    expect(buildProductHref(7, { page: 0, size: 500 })).toBe('/products/7?size=100')
+    expect(buildProductHref(7, { q: '   ' })).toBe('/products/7')
+  })
+
+  it('falls back to the storefront href for an id the API would 422 on', () => {
+    expect(buildProductHref('abc')).toBe('/')
+    expect(buildProductHref(0)).toBe('/')
+    expect(buildProductHref(-3)).toBe('/')
+    expect(buildProductHref(null)).toBe('/')
+    expect(buildProductHref(undefined, { sellerId: 4 })).toBe('/?sellerId=4')
+  })
+
+  it('round-trips through parseProductsQuery', () => {
+    const href = buildProductHref(7, { q: 'mug', sellerId: 4, page: 2, size: 50 })
+    const search = new URLSearchParams(href.slice(href.indexOf('?') + 1))
+    expect(parseProductsQuery(Object.fromEntries(search))).toEqual({
+      page: 2,
+      size: 50,
+      q: 'mug',
+      sellerId: 4,
+    })
   })
 })
 

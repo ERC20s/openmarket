@@ -4,6 +4,7 @@ import { useRouter } from 'next/router'
 
 import { formatPrice } from '../lib/format'
 import {
+  buildProductHref,
   buildProductsQuery,
   buildStorefrontHref,
   hasFilters,
@@ -193,7 +194,17 @@ export default function Home() {
             {items.map((product) => (
               <li key={product.id} style={{ borderTop: '1px solid #e5e7eb', padding: '12px 0' }}>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'baseline' }}>
-                  <strong style={{ flex: 1 }}>{product.title}</strong>
+                  <strong style={{ flex: 1 }}>
+                    {/* The title opens the detail page and carries the current
+                        search, seller and page, so "Back to results" returns
+                        to this exact list. */}
+                    <Link
+                      href={buildProductHref(product.id, query)}
+                      style={{ color: 'inherit', textDecoration: 'none' }}
+                    >
+                      {product.title}
+                    </Link>
+                  </strong>
                   <span>{formatPrice(product.price_cents)}</span>
                 </div>
                 {product.description && (
