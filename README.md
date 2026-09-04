@@ -14,9 +14,19 @@ Running
 - Start the dev server: npm run dev — serves the storefront at http://localhost:3000
   and the API routes under http://localhost:3000/api.
 - Production build: npm run build, then npm start (also port 3000).
-- The storefront at / fetches GET /api/products?page=1&size=20 in the browser and
-  lists each product's title, price and seller. It shows a distinct line for
-  loading, for a failed request and for an empty (unseeded) database.
+- The storefront at / fetches GET /api/products in the browser and lists each
+  product's title, price and seller. It shows a distinct line for loading, for a
+  failed request, for an empty (unseeded) database and for a search that matches
+  nothing.
+- Search, seller filter and paging live in the page URL: /?q=mug, /?sellerId=4,
+  /?page=2 (and /?size=50). The search form and the Prev/Next links write those
+  params, a seller name links to /?sellerId=<id> rather than the raw API route,
+  and the page re-fetches only when the URL changes — never on a keystroke.
+- lib/products-query.ts is the single place that turns that state into the API
+  URL (buildProductsQuery) and reads it back off next/router (parseProductsQuery).
+  It clamps page >= 1, size to 1..100 and q to 100 characters — the same bounds
+  pages/api/products.ts answers 422 on — so a hand-edited URL lands on the
+  nearest legal page instead of the error banner.
 - Prices are stored as whole cents (Product.price_cents) and rendered through
   formatPrice in lib/format.ts.
 
@@ -28,6 +38,9 @@ Testing
   clone with no generate, migrate or seed, and prisma/dev.db is never written.
 - tests/format.test.ts covers formatPrice (0, 5, 1234) so the storefront's money
   rendering is unit-tested without a DOM test runner.
+- tests/products-query.test.ts covers lib/products-query.ts (trimming, clamping,
+  encoding, seller filter, page links). There is no DOM test runner here, so the
+  storefront page itself is only covered through that helper.
 - Each test sets what a spy resolves to and asserts the response plus the query
   arguments (skip, take, orderBy, select). Mocked tests do not prove SQL is
   valid, so a schema change still needs a real migrate.
@@ -35,6 +48,7 @@ Testing
 API
 
 - GET /api/products?page=1&size=20 returns JSON { items, total, page, size }. Ensure the DB is seeded first.
+- GET /api/products also accepts q (matched against title and description, up to 100 characters) and sellerId (a positive integer); out-of-range page, size, q or sellerId answers 422. The storefront at / drives exactly these params.
 - GET /api/sellers/[id]?page=1&size=20 returns JSON { seller, products, total, page, size } for the requested seller id. The seller carries id and name only - the email column is never returned.
 - Every API route is GET-only: any other method answers 405 with an Allow: GET header and JSON { error: 'Method not allowed' }.
 - Every API route answers JSON, including failures: an unexpected exception is logged with console.error on the server and answered as 500 { error: 'Internal server error' }, never an HTML error page or a stack trace.
