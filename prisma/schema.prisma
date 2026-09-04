@@ -23,3 +23,37 @@ model Product {
   sellerId    Int
   createdAt   DateTime @default(now())
 }
+
+// An order placed at POST /api/orders. `reference` is the unguessable public id
+// the confirmation page and GET /api/orders/[id] use, so nobody can walk row
+// ids through other people's orders. `status` is a plain String because sqlite
+// has no enums - lib/orders.ts owns the allowed values and the transitions
+// between them. Money is whole cents, as everywhere else in this repository.
+// The order carries no buyer contact detail: there is nothing here to leak.
+model Order {
+  id          Int         @id @default(autoincrement())
+  reference   String      @unique
+  status      String      @default("pending")
+  total_cents Int
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  items       OrderItem[]
+}
+
+// One bought line, snapshotted. The title, price and seller name are copied in
+// at the moment the order is placed rather than joined at read time, so an
+// order still reads correctly after the product is renamed, re-priced or
+// delisted. productId and sellerId are kept as plain ints (no foreign key) for
+// the same reason: a delisted product must not take the order history with it.
+model OrderItem {
+  id          Int    @id @default(autoincrement())
+  order       Order  @relation(fields: [orderId], references: [id])
+  orderId     Int
+  productId   Int
+  title       String
+  price_cents Int
+  quantity    Int
+  line_total  Int
+  sellerId    Int
+  sellerName  String
+}
