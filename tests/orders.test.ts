@@ -13,6 +13,7 @@ import {
   newOrderReference,
   nextStatuses,
   orderTotal,
+  buyerNextStatuses,
 } from '../lib/orders'
 import { groupLinesBySeller, normalizeRequestedLines, priceQuote, readBody } from '../lib/quote'
 
@@ -48,6 +49,14 @@ describe('order statuses', () => {
     expect(canTransition('pending', 'cancelled')).toBe(true)
     expect(canTransition('paid', 'cancelled')).toBe(true)
     expect(canTransition('shipped', 'cancelled')).toBe(false)
+  })
+
+  it('exposes only the buyer-allowed transitions', () => {
+    expect(buyerNextStatuses('pending')).toEqual(['cancelled'])
+    expect(buyerNextStatuses('paid')).toEqual([])
+    expect(buyerNextStatuses('shipped')).toEqual([])
+    expect(buyerNextStatuses('delivered')).toEqual([])
+    expect(buyerNextStatuses('cancelled')).toEqual([])
   })
 
   it('applyTransition gives back the new status or the reason it was refused', () => {

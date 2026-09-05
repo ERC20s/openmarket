@@ -135,3 +135,17 @@ export function orderTotal(lines: { line_total?: number | null }[]): number {
     return sum + value
   }, 0)
 }
+
+// ---------------------------------------------------------------------------
+// Buyer-limited view of the state machine. The confirmation page runs in the
+// browser and shows a "Cancel this order" button only when the buyer may ask
+// for that move. For now the buyer may only cancel a freshly placed (pending)
+// order; paid/shipped/delivered transitions remain seller-only and require a
+// signed-in dashboard.
+// ---------------------------------------------------------------------------
+export function buyerNextStatuses(from: unknown): OrderStatus[] {
+  if (!isOrderStatus(from)) return []
+  // Only a pending order may be cancelled by the buyer.
+  if (from === 'pending') return ['cancelled']
+  return []
+}
