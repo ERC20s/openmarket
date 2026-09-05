@@ -129,7 +129,7 @@ payments:
 # (the VSD8A extension) and by nothing else.
 run:
   {
-    "// setup": "npm i, then npm run prisma:generate && npm run prisma:migrate && npm run prisma:seed",
+    "setup": "npm run prisma:generate && npm run prisma:migrate && npm run prisma:seed",
     "test": { "cmd": "npm test" },
     "web": { "cmd": "npm run dev", "port": 3000 }
   }
