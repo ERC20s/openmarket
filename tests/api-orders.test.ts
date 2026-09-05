@@ -203,12 +203,47 @@ describe('GET /api/orders/[id]', () => {
     const notAllowed = mockRes()
     await readHandler(mockReq(`/api/orders/${REF}`, 'POST'), notAllowed)
     expect(notAllowed.statusCode).toBe(405)
-    expect(notAllowed.headers.allow).toBe('GET')
+    expect(notAllowed.headers.allow).toBe('GET, PATCH')
 
     prismaSpies.order.findUnique.mockRejectedValue(new Error('nope'))
     const failed = mockRes()
     await readHandler(mockReq(`/api/orders/${REF}`), failed)
     expect(failed.statusCode).toBe(500)
     expect(failed.body).toEqual({ error: 'Internal server error' })
+  })
+
+  describe('PATCH /api/orders/[id]', () => {
+    it('answers 422 for an invalid target status', async () => {
+      const res = mockRes()
+      await readHandler(mockReq(`/api/orders/${REF}`, 'PATCH', { status: 123 }), res)
+      expect(res.statusCode).toBe(422)
+      expect(res.body).toEqual({ error: 'Invalid target status' })
+    })
+
+    it('answers 404 for an unknown reference', async () => {
+      prismaSpies.order.findUnique.mockResolvedValue(null)
+      const res = mockRes()
+      await readHandler(mockReq(`/api/orders/${REF}`, 'PATCH', { status: 'cancelled' }), res)
+      expect(res.statusCode).toBe(404)
+      expect(res.body).toEqual({ error: 'Order not found' })
+    })
+
+    it('answers 409 when the move is refused (already cancelled)', async () => {
+      prismaSpies.order.findUnique.mockResolvedValue(fakeOrder({ reference: REF, status: 'cancelled' }))
+      const res = mockRes()
+      await readHandler(mockReq(`/api/orders/${REF}`, 'PATCH', { status: 'cancelled' }), res)
+      expect(res.statusCode).toBe(409)
+      expect(typeof res.body.error).toBe('string')
+    })
+
+    it('updates the order on a successful cancel', async () => {
+      prismaSpies.order.findUnique.mockResolvedValue(fakeOrder({ reference: REF, status: 'pending' }))
+      prismaSpies.order.update.mockResolvedValue(fakeOrder({ reference: REF, status: 'cancelled' }))
+      const res = mockRes()
+      await readHandler(mockReq(`/api/orders/${REF}`, 'PATCH', { status: 'cancelled' }), res)
+      expect(res.statusCode).toBe(200)
+      expect(res.body.status).toBe('cancelled')
+      expect(prismaSpies.order.update).toHaveBeenCalledWith({ where: { reference: REF }, data: { status: 'cancelled' } })
+    })
   })
 })

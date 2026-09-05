@@ -4,7 +4,7 @@ import { useRouter } from 'next/router'
 
 import { formatPrice } from '../../lib/format'
 import { buildProductHref, buildSellerHref } from '../../lib/products-query'
-import { describeStatus, isOrderReference } from '../../lib/orders'
+import { describeStatus, isOrderReference, buyerNextStatuses } from '../../lib/orders'
 
 // The confirmation page. Everything on it comes back from
 // GET /api/orders/<reference> — the order was priced and written on the server,
@@ -214,6 +214,53 @@ export default function OrderPage() {
             taken. Taking the money, and the seller moving the order on to shipped and delivered,
             are the next pieces of the marketplace.
           </p>
+
+          {/* Cancel button: shown only when the buyer is allowed to request that move. */}
+          {buyerNextStatuses(state.order.status).includes('cancelled') && (
+            <p style={{ marginTop: 12 }}>
+              <button
+                onClick={async (e) => {
+                  const btn = e.currentTarget as HTMLButtonElement
+                  btn.disabled = true
+                  try {
+                    const res = await fetch(`/api/orders/${encodeURIComponent(state.order.reference)}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ status: 'cancelled' }),
+                    })
+                    if (res.status === 409) {
+                      const data = await res.json().catch(() => null)
+                      btn.disabled = false
+                      alert((data && data.error) || 'Could not cancel this order.')
+                      return
+                    }
+                    if (!res.ok) {
+                      btn.disabled = false
+                      alert('Could not cancel this order.')
+                      return
+                    }
+                    // Refresh the shown status on success.
+                    const data = await res.json().catch(() => null)
+                    if (data && data.status) {
+                      setState({ status: 'ready', order: { ...state.order, status: data.status } })
+                    } else {
+                      // Fallback: reload the whole order.
+                      setState({ status: 'loading' })
+                      const r = await fetch(`/api/orders/${encodeURIComponent(state.order.reference)}`)
+                      const d = await r.json().catch(() => null)
+                      if (r.ok && d) setState({ status: 'ready', order: { ...state.order, status: d.status } })
+                      else setState({ status: 'error', message: 'Could not reload the order.' })
+                    }
+                  } catch (err) {
+                    btn.disabled = false
+                    alert('Could not reach the order service. Is the server running?')
+                  }
+                }}
+              >
+                Cancel this order
+              </button>
+            </p>
+          )}
         </>
       )}
     </main>
