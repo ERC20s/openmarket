@@ -31,12 +31,16 @@ export const prismaSpies = {
     findMany: vi.fn(),
     update: vi.fn(),
   },
+  orderItem: {
+    findMany: vi.fn(),
+  },
 }
 
 export class PrismaClientMock {
   product = prismaSpies.product
   seller = prismaSpies.seller
   order = prismaSpies.order
+  orderItem = prismaSpies.orderItem
   $connect = async () => {}
   $disconnect = async () => {}
   // Prisma's $transaction takes either a callback (given a client) or an array
@@ -73,6 +77,7 @@ export function resetPrismaSpies() {
   prismaSpies.order.findUnique.mockReset().mockResolvedValue(null)
   prismaSpies.order.findMany.mockReset().mockResolvedValue([])
   prismaSpies.order.update.mockReset().mockResolvedValue(null)
+  prismaSpies.orderItem.findMany.mockReset().mockResolvedValue([])
 }
 
 // The request/response doubles that used to be copy-pasted into every test
@@ -118,6 +123,25 @@ export function fakeProduct(overrides: Record<string, any> = {}) {
     sellerId: 1,
     createdAt: new Date('2024-01-01T00:00:00.000Z'),
     seller: { id: 1, name: 'A seller' },
+    ...overrides,
+  }
+}
+
+// One OrderItem row shaped the way GET /api/sellers/[id]/orders reads it:
+// the order it belongs to is included, narrowed to status and createdAt —
+// never the reference, exactly as that route never selects it.
+export function fakeOrderItem(overrides: Record<string, any> = {}) {
+  return {
+    id: 1,
+    orderId: 1,
+    productId: 1,
+    title: 'A product',
+    price_cents: 1200,
+    quantity: 2,
+    line_total: 2400,
+    sellerId: 1,
+    sellerName: 'A seller',
+    order: { status: 'paid', createdAt: new Date('2024-01-01T00:00:00.000Z') },
     ...overrides,
   }
 }
