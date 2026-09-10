@@ -50,6 +50,15 @@ Running
   the link and carries only page and size (never q or sellerId); an id that is
   not a positive integer falls back to the storefront href, so a bad row can
   never produce a broken link.
+- A "View orders" link on the seller page opens /sellers/[id]/orders
+  (pages/sellers/[id]/orders.tsx), which fetches
+  GET /api/sellers/[id]/orders?page=&size= and lists that seller's own orders:
+  status (via describeStatus from lib/orders.ts), when it was placed, this
+  seller's lines and their subtotal. It never shows the order reference or
+  another seller's lines from a shared order - this page is public and
+  indexed by seller id, unlike the buyer confirmation page a reference is
+  handed to once. Same four states and the same Prev/Next paging as the
+  seller page.
 - Add to cart on a product page (pages/products/[id].tsx) writes the product
   into a cart kept in this browser's localStorage under openmarket.cart.v1. A
   repeat click bumps the quantity on the same line instead of adding a second
@@ -149,6 +158,12 @@ Testing
   GET /api/orders/[id] (lookup by reference with per-seller grouping, 422 for a
   row id or a malformed reference, 404 for an unknown one, 405 with Allow: GET
   and JSON 500).
+- tests/api-sellers-orders.test.ts covers GET /api/sellers/[id]/orders: grouping
+  a seller's OrderItem rows back into orders with a per-order subtotal, newest
+  order first, that the response never carries the reference or another
+  seller's lines, an empty result for a seller with no orders (no second query
+  fired), order-level pagination, 404 for an unknown seller, 422 for a bad id
+  or page, and 405 with Allow: GET on a POST.
 - Each test sets what a spy resolves to and asserts the response plus the query
   arguments (skip, take, orderBy, select). Mocked tests do not prove SQL is
   valid, so a schema change still needs a real migrate.
@@ -163,6 +178,7 @@ API
   /api/sellers/[id], the query selects id, name and the product count only - the
   email column is never returned. The seller picker on / drives this route.
 - GET /api/sellers/[id]?page=1&size=20 returns JSON { seller, products, total, page, size } for the requested seller id. The seller carries id and name only - the email column is never returned. A non-numeric or non-positive id answers 422 { error: 'Invalid id' } and an unknown id answers 404 { error: 'Seller not found' }. The seller page at /sellers/[id] drives exactly this route.
+- GET /api/sellers/[id]/orders?page=1&size=20 returns JSON { seller, orders, total, page, size } for that seller: each order is { status, createdAt, lines, subtotal } built from that seller's own OrderItem rows (sellerId/sellerName are snapshotted on every line at order time, so no schema change was needed). Orders are grouped and paginated at the order level, newest first, and the response never carries the order reference or another seller's lines from the same order - the same 422/404 rules as /api/sellers/[id] apply to the id, and the 405/500 rules above apply to method and errors. The "View orders" link on /sellers/[id] and the page at /sellers/[id]/orders drive exactly this route.
 - POST /api/checkout takes { lines: [{ productId, quantity, price_cents? }] }
   and returns a quote priced from the database:
   { lines, sellers, total, count, problems, limits }. Each line carries the

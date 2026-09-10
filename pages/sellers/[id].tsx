@@ -230,6 +230,10 @@ export default function SellerPage() {
             >
               Search within this seller
             </Link>
+            {' · '}
+            <Link href={`/sellers/${seller.id}/orders`} style={{ color: '#7c5cff' }}>
+              View orders
+            </Link>
           </p>
         </>
       )}
