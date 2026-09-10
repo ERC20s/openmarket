@@ -15,6 +15,8 @@ beforeEach(() => {
 describe('GET /api/sellers/[id]/orders', () => {
   it('groups this seller\'s order items back into orders, newest order first', async () => {
     prismaSpies.seller.findUnique.mockResolvedValue({ id: 4, name: 'Acme' })
+    // total distinct orders for this seller
+    prismaSpies.$queryRaw.mockResolvedValueOnce([{ count: 2 }])
     prismaSpies.orderItem.findMany
       .mockResolvedValueOnce([{ orderId: 9 }, { orderId: 7 }])
       .mockResolvedValueOnce([
@@ -35,6 +37,7 @@ describe('GET /api/sellers/[id]/orders', () => {
 
   it('never returns the order reference or another seller\'s lines', async () => {
     prismaSpies.seller.findUnique.mockResolvedValue({ id: 4, name: 'Acme' })
+    prismaSpies.$queryRaw.mockResolvedValueOnce([{ count: 1 }])
     prismaSpies.orderItem.findMany
       .mockResolvedValueOnce([{ orderId: 9 }])
       .mockResolvedValueOnce([fakeOrderItem({ orderId: 9, sellerId: 4 })])
@@ -52,6 +55,7 @@ describe('GET /api/sellers/[id]/orders', () => {
 
   it('returns an empty list, not an error, for a seller with no orders', async () => {
     prismaSpies.seller.findUnique.mockResolvedValue({ id: 4, name: 'Acme' })
+    prismaSpies.$queryRaw.mockResolvedValueOnce([{ count: 0 }])
     prismaSpies.orderItem.findMany.mockResolvedValueOnce([])
 
     const res = mockRes()
@@ -93,6 +97,7 @@ describe('GET /api/sellers/[id]/orders', () => {
 
   it('paginates at the order level with an offset derived from page and size', async () => {
     prismaSpies.seller.findUnique.mockResolvedValue({ id: 4, name: 'Acme' })
+    prismaSpies.$queryRaw.mockResolvedValueOnce([{ count: 3 }])
     prismaSpies.orderItem.findMany
       .mockResolvedValueOnce([{ orderId: 5 }, { orderId: 4 }, { orderId: 3 }])
       .mockResolvedValueOnce([fakeOrderItem({ orderId: 3, sellerId: 4 })])
