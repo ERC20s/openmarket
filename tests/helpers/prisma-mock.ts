@@ -34,6 +34,9 @@ export const prismaSpies = {
   orderItem: {
     findMany: vi.fn(),
   },
+  // A spy for raw queries such as the COUNT(DISTINCT ...) used by
+  // pages/api/sellers/[id]/orders.ts to compute the total number of orders.
+  $queryRaw: vi.fn(),
 }
 
 export class PrismaClientMock {
@@ -41,6 +44,7 @@ export class PrismaClientMock {
   seller = prismaSpies.seller
   order = prismaSpies.order
   orderItem = prismaSpies.orderItem
+  $queryRaw = prismaSpies.$queryRaw
   $connect = async () => {}
   $disconnect = async () => {}
   // Prisma's $transaction takes either a callback (given a client) or an array
@@ -78,6 +82,8 @@ export function resetPrismaSpies() {
   prismaSpies.order.findMany.mockReset().mockResolvedValue([])
   prismaSpies.order.update.mockReset().mockResolvedValue(null)
   prismaSpies.orderItem.findMany.mockReset().mockResolvedValue([])
+  // default raw query returns zero count
+  prismaSpies.$queryRaw.mockReset().mockResolvedValue([{ count: 0 }])
 }
 
 // The request/response doubles that used to be copy-pasted into every test

@@ -71,16 +71,27 @@ async function getSellerOrders(req: NextApiRequest, res: NextApiResponse) {
 
   // Step 1: which orders this seller's lines belong to, newest order first.
   // Paginate at the order level, not the line level, so a multi-line order
-  // never straddles two pages.
+  // never straddles two pages. Ask the database for the total distinct order
+  // count and for just the page of distinct orderIds we need.
+  // Use a raw COUNT(DISTINCT ...) query for the total and a distinct
+  // findMany with skip/take for the page of orderIds.
+  const countRows: any[] = await prisma.$queryRaw`
+    SELECT COUNT(DISTINCT "orderId") AS count
+    FROM "OrderItem"
+    WHERE "sellerId" = ${id}
+  `
+  const total = Number(countRows?.[0]?.count) || 0
+
   const distinctItems: { orderId: number }[] = await prisma.orderItem.findMany({
     where: { sellerId: id },
     distinct: ['orderId'],
     select: { orderId: true },
     orderBy: { order: { createdAt: 'desc' } },
+    skip,
+    take: size,
   })
 
-  const total = distinctItems.length
-  const pageOrderIds = distinctItems.slice(skip, skip + size).map((row) => row.orderId)
+  const pageOrderIds = distinctItems.map((row) => row.orderId)
 
   // Step 2: this seller's own lines for exactly those orders — never a line
   // belonging to another seller on a shared order.
