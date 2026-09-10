@@ -129,7 +129,7 @@ async function handleOrder(req: NextApiRequest, res: NextApiResponse) {
       return
     }
 
-    const updated: any = await prisma.order.update({ where: { reference }, data: { status: result.status } })
+    const updated: any = await prisma.order.update({ where: { reference }, data: { status: result.status }, include: { items: true } })
     res.status(200).json(await serialize(updated))
     return
   }
