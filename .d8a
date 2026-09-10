@@ -121,6 +121,11 @@ payments:
   })();
   </script>
 
+items:
+  OpenMarket T-Shirt = $20.00 — Comfortable unisex tee | S, M, L, XL
+  OpenMarket Sticker Pack = $3.00 — Five assorted OpenMarket stickers
+  OpenMarket Gift Card = $25.00 — Digital $25 gift card, redeemable via the shop
+
 # Where this repository runs live, if anywhere — the footer shows it as a globe.
 # url: https://example.com
 
