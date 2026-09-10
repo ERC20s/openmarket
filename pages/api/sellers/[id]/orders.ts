@@ -23,14 +23,11 @@ const prisma = (process.env.NODE_ENV === 'production')
 // lines and their subtotal are returned — never another seller's lines from
 // the same order, and never the raw order id or reference.
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  try {
-    await getSellerOrders(req, res)
-  } catch (err) {
-    console.error('GET /api/sellers/[id]/orders failed', err)
-    res.status(500).json({ error: 'Internal server error' })
-  }
-}
+import { apiRoute } from '../../../../lib/api'
+
+export default apiRoute(async function handler(req: NextApiRequest, res: NextApiResponse) {
+  await getSellerOrders(req, res)
+}, { methods: ['GET'], name: 'GET /api/sellers/[id]/orders' })
 
 async function getSellerOrders(req: NextApiRequest, res: NextApiResponse) {
   // Expect URLs like /api/sellers/4/orders

@@ -11,24 +11,11 @@ const prisma = (process.env.NODE_ENV === 'production')
   ? new PrismaClient()
   : (globalThis as any).__prisma ?? ((globalThis as any).__prisma = new PrismaClient())
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Only support GET for now — same guard the /[id] routes already carry, so a
-  // POST here answers 405 JSON instead of falling through to the list query.
-  if (req.method && req.method !== 'GET') {
-    res.setHeader('Allow', 'GET')
-    res.status(405).json({ error: 'Method not allowed' })
-    return
-  }
+import { apiRoute } from '../../lib/api'
 
-  try {
-    await listProducts(req, res)
-  } catch (err) {
-    // Details stay in the server log; the client gets a stable JSON shape
-    // instead of Next's HTML error page or a stack trace.
-    console.error('GET /api/products failed', err)
-    res.status(500).json({ error: 'Internal server error' })
-  }
-}
+export default apiRoute(async function handler(req: NextApiRequest, res: NextApiResponse) {
+  await listProducts(req, res)
+}, { methods: ['GET'], name: 'GET /api/products' })
 
 async function listProducts(req: NextApiRequest, res: NextApiResponse) {
   const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)

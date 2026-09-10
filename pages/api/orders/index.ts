@@ -25,22 +25,11 @@ const prisma = (process.env.NODE_ENV === 'production')
 // Nothing is paid here: the order is written with status "pending"
 // (lib/orders.ts owns what may happen to it next).
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST')
-    res.status(405).json({ error: 'Method not allowed' })
-    return
-  }
+import { apiRoute } from '../../../lib/api'
 
-  try {
-    await placeOrder(req, res)
-  } catch (err) {
-    // Details stay in the server log; the client gets a stable JSON shape
-    // instead of Next's HTML error page or a stack trace.
-    console.error('POST /api/orders failed', err)
-    res.status(500).json({ error: 'Internal server error' })
-  }
-}
+export default apiRoute(async function handler(req: NextApiRequest, res: NextApiResponse) {
+  await placeOrder(req, res)
+}, { methods: ['POST'], name: 'POST /api/orders' })
 
 async function placeOrder(req: NextApiRequest, res: NextApiResponse) {
   const parsed = normalizeRequestedLines(readBody(req))
