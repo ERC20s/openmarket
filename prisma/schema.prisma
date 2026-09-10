@@ -22,6 +22,8 @@ model Product {
   seller      Seller   @relation(fields: [sellerId], references: [id])
   sellerId    Int
   createdAt   DateTime @default(now())
+
+  @@index([sellerId, createdAt])
 }
 
 // An order placed at POST /api/orders. `reference` is the unguessable public id
