@@ -32,14 +32,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 async function listProducts(req: NextApiRequest, res: NextApiResponse) {
   const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
-  const pageRaw = url.searchParams.get('page') ?? '1'
-  const sizeRaw = url.searchParams.get('size') ?? '20'
+  const pageRaw = url.searchParams.get('page')
+  const sizeRaw = url.searchParams.get('size')
 
-  const page = parseInt(pageRaw, 10)
-  const size = parseInt(sizeRaw, 10)
-
-  if (Number.isNaN(page) || page < 1 || Number.isNaN(size) || size < 1 || size > 100) {
-    res.status(422).json({ error: 'Invalid page or size' })
+  const { page, size, skip, error } = require('../../lib/pagination').parsePageSize(pageRaw, sizeRaw)
+  if (error) {
+    res.status(422).json({ error })
     return
   }
 
@@ -60,8 +58,6 @@ async function listProducts(req: NextApiRequest, res: NextApiResponse) {
     }
     sellerId = parsed
   }
-
-  const skip = (page - 1) * size
 
   // Build where only if any filter is present; when no filters are given we
   // keep the original calls (no where) so existing behaviour and tests stay
