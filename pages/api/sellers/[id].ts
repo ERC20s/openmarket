@@ -40,18 +40,14 @@ async function getSeller(req: NextApiRequest, res: NextApiResponse) {
     return
   }
 
-  const pageRaw = url.searchParams.get('page') ?? '1'
-  const sizeRaw = url.searchParams.get('size') ?? '20'
+  const pageRaw = url.searchParams.get('page')
+  const sizeRaw = url.searchParams.get('size')
 
-  const page = parseInt(pageRaw, 10)
-  const size = parseInt(sizeRaw, 10)
-
-  if (Number.isNaN(page) || page < 1 || Number.isNaN(size) || size < 1 || size > 100) {
-    res.status(422).json({ error: 'Invalid page or size' })
+  const { page, size, skip, error } = require('../../../lib/pagination').parsePageSize(pageRaw, sizeRaw)
+  if (error) {
+    res.status(422).json({ error })
     return
   }
-
-  const skip = (page - 1) * size
 
   // Ensure seller exists. Select explicitly: a bare findUnique returns every
   // column, which would ship the seller's email address to any visitor. The
