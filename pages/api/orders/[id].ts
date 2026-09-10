@@ -20,14 +20,11 @@ const prisma = (process.env.NODE_ENV === 'production')
 // only what was bought, and the Order model holds no buyer contact detail at
 // all, exactly as the seller routes never return a seller's email.
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  try {
-    await handleOrder(req, res)
-  } catch (err) {
-    console.error('GET/PATCH /api/orders/[id] failed', err)
-    res.status(500).json({ error: 'Internal server error' })
-  }
-}
+import { apiRoute } from '../../../lib/api'
+
+export default apiRoute(async function handler(req: NextApiRequest, res: NextApiResponse) {
+  await handleOrder(req, res)
+}, { methods: ['GET', 'PATCH'], name: 'GET/PATCH /api/orders/[id]' })
 
 async function handleOrder(req: NextApiRequest, res: NextApiResponse) {
   // Expect URLs like /api/orders/om_0123456789abcdef01234567

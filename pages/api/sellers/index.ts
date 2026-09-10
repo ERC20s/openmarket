@@ -16,24 +16,11 @@ const prisma = (process.env.NODE_ENV === 'production')
 // page it, and revisit with search-as-you-type if a marketplace ever outgrows it.
 export const MAX_SELLERS = 100
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Only support GET for now — the same guard /api/products and the /[id]
-  // routes carry, so a POST answers 405 JSON instead of running the query.
-  if (req.method && req.method !== 'GET') {
-    res.setHeader('Allow', 'GET')
-    res.status(405).json({ error: 'Method not allowed' })
-    return
-  }
+import { apiRoute } from '../../lib/api'
 
-  try {
-    await listSellers(req, res)
-  } catch (err) {
-    // Details stay in the server log; the client gets a stable JSON shape
-    // instead of Next's HTML error page or a stack trace.
-    console.error('GET /api/sellers failed', err)
-    res.status(500).json({ error: 'Internal server error' })
-  }
-}
+export default apiRoute(async function handler(req: NextApiRequest, res: NextApiResponse) {
+  await listSellers(req, res)
+}, { methods: ['GET'], name: 'GET /api/sellers' })
 
 async function listSellers(_req: NextApiRequest, res: NextApiResponse) {
   // Select explicitly. A bare findMany returns every column, which would ship

@@ -20,25 +20,11 @@ const prisma = (process.env.NODE_ENV === 'production')
 
 export type { QuoteLine, QuoteSeller, QuoteProblem } from '../../lib/quote'
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // The mirror image of the GET-only guard on the read routes: a quote changes
-  // nothing but it carries a body, so this route is POST-only and a GET gets
-  // 405 JSON instead of an empty quote.
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST')
-    res.status(405).json({ error: 'Method not allowed' })
-    return
-  }
+import { apiRoute } from '../../lib/api'
 
-  try {
-    await quoteCheckout(req, res)
-  } catch (err) {
-    // Details stay in the server log; the client gets a stable JSON shape
-    // instead of Next's HTML error page or a stack trace.
-    console.error('POST /api/checkout failed', err)
-    res.status(500).json({ error: 'Internal server error' })
-  }
-}
+export default apiRoute(async function handler(req: NextApiRequest, res: NextApiResponse) {
+  await quoteCheckout(req, res)
+}, { methods: ['POST'], name: 'POST /api/checkout' })
 
 async function quoteCheckout(req: NextApiRequest, res: NextApiResponse) {
   const parsed = normalizeRequestedLines(readBody(req))

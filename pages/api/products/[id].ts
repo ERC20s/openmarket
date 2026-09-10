@@ -10,16 +10,11 @@ const prisma = (process.env.NODE_ENV === 'production')
   ? new PrismaClient()
   : (globalThis as any).__prisma ?? ((globalThis as any).__prisma = new PrismaClient())
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  try {
-    await getProduct(req, res)
-  } catch (err) {
-    // Details stay in the server log; the client gets a stable JSON shape
-    // instead of Next's HTML error page or a stack trace.
-    console.error('GET /api/products/[id] failed', err)
-    res.status(500).json({ error: 'Internal server error' })
-  }
-}
+import { apiRoute } from '../../lib/api'
+
+export default apiRoute(async function handler(req: NextApiRequest, res: NextApiResponse) {
+  await getProduct(req, res)
+}, { methods: ['GET'], name: 'GET /api/products/[id]' })
 
 async function getProduct(req: NextApiRequest, res: NextApiResponse) {
   // Expect URLs like /api/products/1
