@@ -91,12 +91,13 @@ export function resetPrismaSpies() {
 // and the tests only need the three members the handlers touch.
 // `body` is what Next.js would have parsed off a POST; GET handlers ignore it,
 // so it stays optional and every existing call site keeps working.
-export function mockReq(url: string, method = 'GET', body?: any): any {
+export function mockReq(url: string, method = 'GET', body?: any, socket?: { remoteAddress?: string }): any {
   return {
     url,
     method,
     headers: { host: 'localhost' },
     body,
+    socket: { remoteAddress: socket?.remoteAddress },
   }
 }
 
