@@ -26,12 +26,20 @@ const prisma = (process.env.NODE_ENV === 'production')
 // (lib/orders.ts owns what may happen to it next).
 
 import { apiRoute } from '../../../lib/api'
+import { allowRequest } from '../../../lib/rate-limit'
 
 export default apiRoute(async function handler(req: NextApiRequest, res: NextApiResponse) {
   await placeOrder(req, res)
 }, { methods: ['POST'], name: 'POST /api/orders' })
 
 async function placeOrder(req: NextApiRequest, res: NextApiResponse) {
+  // Simple in-process rate limiting to reject obvious floods. Defaults to
+  // 10 requests per 60s; callers can tune by changing the arguments here.
+  if (!allowRequest(req, 10, 60_000)) {
+    res.status(429).json({ error: 'Too many requests' })
+    return
+  }
+
   const parsed = normalizeRequestedLines(readBody(req))
   if ('error' in parsed) {
     res.status(422).json({ error: parsed.error })
