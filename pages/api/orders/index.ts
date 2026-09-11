@@ -27,7 +27,18 @@ const prisma = (process.env.NODE_ENV === 'production')
 
 import { apiRoute } from '../../../lib/api'
 
+import { allowRequest } from '../../../lib/rate-limit'
+
 export default apiRoute(async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Rate limit excessive repeated POSTs to avoid spurious DB writes.
+  if (req.method === 'POST') {
+    const ok = allowRequest(req)
+    if (!ok) {
+      res.status(429).json({ error: 'Too many requests' })
+      return
+    }
+  }
+
   await placeOrder(req, res)
 }, { methods: ['POST'], name: 'POST /api/orders' })
 
