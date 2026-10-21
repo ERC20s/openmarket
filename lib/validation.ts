@@ -10,11 +10,11 @@ import type { NextApiResponse } from 'next'
 import { z } from 'zod'
 
 import { MAX_LINES, MAX_QUANTITY, MIN_QUANTITY } from './cart'
-import { MAX_PAGE, MAX_Q_LENGTH, MAX_SIZE } from './products-query'
+import { MAX_ID, MAX_PAGE, MAX_Q_LENGTH, MAX_SIZE } from './products-query'
 import { ORDER_REFERENCE_PATTERN } from './orders'
 
-/** Largest id a SQLite INTEGER primary key in this schema is asked for. */
-export const MAX_ID = 2_147_483_647
+/** Largest id a SQLite INTEGER primary key in this schema is asked for (shared with the storefront). */
+export { MAX_ID }
 export const MAX_TITLE_LENGTH = 200
 export const MAX_DESCRIPTION_LENGTH = 5_000
 export const MAX_SELLER_NAME_LENGTH = 100

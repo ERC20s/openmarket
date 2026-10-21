@@ -71,6 +71,16 @@ export function buyerToken(req: RequestLike): string | undefined {
   return isToken(value) ? value : undefined
 }
 
+/**
+ * Did the browser send this from another site? Browsers set Sec-Fetch-Site on
+ * every request and a page cannot override it. A cross-site request never
+ * carries the SameSite=Lax buyer cookie, so a route that hands out a cookie
+ * must refuse it rather than mint a new one over the buyer's own.
+ */
+export function isCrossSite(req: RequestLike): boolean {
+  return header(req, 'sec-fetch-site')?.trim().toLowerCase() === 'cross-site'
+}
+
 export function buyerCookie(token: string): string {
   const parts = [`${BUYER_COOKIE}=${token}`, 'Path=/', 'HttpOnly', 'SameSite=Lax', `Max-Age=${BUYER_COOKIE_MAX_AGE}`]
   if (process.env.NODE_ENV === 'production') parts.push('Secure')

@@ -220,6 +220,32 @@ describe('buyer orders', () => {
     expect(res.headers['set-cookie']).toContain(`${BUYER_COOKIE}=${BUYER_ONE};`)
   })
 
+  it('refuses an order posted from another site, so a third-party page cannot replace the buyer cookie', async () => {
+    // A cross-site <form enctype="text/plain"> can post a JSON-looking body.
+    // The SameSite=Lax cookie is not sent with it, so the route used to mint a
+    // new token and Set-Cookie over the buyer's own: their earlier orders could
+    // no longer be cancelled from this browser.
+    const crossSite = mockReq('/api/orders', 'POST', '{"lines":[{"productId":1,"x":"="}]}')
+    crossSite.headers['sec-fetch-site'] = 'cross-site'
+    const refused = mockRes()
+    await ordersHandler(crossSite, refused)
+
+    expect(refused.statusCode).toBe(403)
+    expect(refused.body).toEqual({ error: 'Forbidden' })
+    expect(refused.headers['set-cookie']).toBeUndefined()
+    expect(prismaSpies.order.create).not.toHaveBeenCalled()
+
+    // The storefront's own fetch is same-origin and still places the order.
+    const sameOrigin = asBuyer(mockReq('/api/orders', 'POST', { lines: [{ productId: 1 }] }), BUYER_ONE)
+    sameOrigin.headers['sec-fetch-site'] = 'same-origin'
+    const placed = mockRes()
+    await ordersHandler(sameOrigin, placed)
+
+    expect(placed.statusCode).toBe(201)
+    expect(prismaSpies.order.create).toHaveBeenCalledTimes(1)
+    expect(placed.headers['set-cookie']).toContain(`${BUYER_COOKIE}=${BUYER_ONE};`)
+  })
+
   it("refuses to cancel another buyer's order with 403, even with the reference", async () => {
     prismaSpies.order.findUnique.mockResolvedValue(
       fakeOrder({ reference: REF, status: 'pending', buyerTokenHash: hashToken(BUYER_ONE) })

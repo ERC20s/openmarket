@@ -28,9 +28,19 @@ const prisma = (process.env.NODE_ENV === 'production')
 import { apiRoute } from '../../../lib/api'
 
 import { allowRequest } from '../../../lib/rate-limit'
-import { buyerCookie, buyerToken, hashToken, newToken } from '../../../lib/auth'
+import { FORBIDDEN, buyerCookie, buyerToken, hashToken, isCrossSite, newToken } from '../../../lib/auth'
 
 export default apiRoute(async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Only the storefront's own pages place orders. A third-party page can post
+  // here with a text/plain form (no preflight), and without the Lax cookie the
+  // order below would Set-Cookie a fresh buyer token over the buyer's own —
+  // after which they could no longer cancel their earlier orders. Refused
+  // before the rate limit, so it cannot spend the buyer's quota either.
+  if (req.method === 'POST' && isCrossSite(req)) {
+    res.status(403).json(FORBIDDEN)
+    return
+  }
+
   // Rate limit excessive repeated POSTs to avoid spurious DB writes. The client
   // is keyed by its socket address (or, behind TRUSTED_PROXY, the hop that
   // proxy appended) — never by a header the client wrote itself.

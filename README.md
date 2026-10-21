@@ -28,6 +28,9 @@ Running
   /?page=2 (and /?size=50). The search form and the Prev/Next links write those
   params, a seller name links to /?sellerId=<id> rather than the raw API route,
   and the page re-fetches only when the URL changes — never on a keystroke.
+  A hand-typed ?sellerId= that is not an id the API accepts (0 or less, junk,
+  or past 2,147,483,647) is dropped like any other junk value instead of
+  turning into the red error banner.
 - The seller facet on / is a "Seller" picker fed by GET /api/sellers (fetched
   once per page load, not per search). "All sellers" clears the filter and any
   other option pushes /?sellerId=<id> at page 1, keeping the current search and
@@ -92,7 +95,8 @@ Running
   whose price moved or that is no longer for sale. It has its own line for
   loading, for an empty cart and for a failed request. Its "Place order" button
   posts the lines as the review priced them (orderRequestFromQuote in
-  lib/quote.ts: the quoted products at the quoted prices, a delisted one left
+  lib/order-request.ts, which imports nothing so zod stays out of the page's
+  bundle: the quoted products at the quoted prices, a delisted one left
   out) to POST /api/orders, so a price that moved while the product sat in the
   cart is ordered at the price the buyer just saw rather than refused on every
   click: on success it empties the cart and goes to /orders/<reference>; on 409
@@ -138,8 +142,11 @@ Testing
   already holds rows in either table gets nothing written.
 - tests/api-auth.test.ts covers the authorisation rules: a seller creating,
   editing and delisting only their own products and renaming only their own
-  storefront (another seller gets 403, no token 401), and a buyer cancelling
-  only an order placed with their own cookie.
+  storefront (another seller gets 403, no token 401), a buyer cancelling
+  only an order placed with their own cookie, and a cross-site order POST
+  refused with 403 and no Set-Cookie.
+- tests/client-bundle.test.ts walks the static imports of every browser page
+  (pages/ outside pages/api) and fails if one reaches zod, directly or through lib/.
 - tests/validation.test.ts sends junk paths, queries and bodies to every route
   and checks each answers 400 without a database call; tests/rate-limit.test.ts
   covers the limiter's LRU bound, TTL expiry and client keying (a spoofed
@@ -235,7 +242,10 @@ API
   re-priced or delisted. No payment is taken: the order sits at pending.
   The response sets an HttpOnly om_buyer cookie (reusing the one the browser
   already holds) and the order stores only its SHA-256: that cookie is what
-  lets the buyer change the order later.
+  lets the buyer change the order later. A request the browser marks
+  Sec-Fetch-Site: cross-site answers 403 before anything else: a third-party
+  page could otherwise post a text/plain form here and, since the Lax cookie
+  is not sent with it, replace the buyer's cookie with a fresh one.
   It is rate limited to 10 orders per client per minute (429 with Retry-After).
   The client is the socket address; X-Forwarded-For is ignored unless
   TRUSTED_PROXY names the proxy the request came from (a comma-separated list

@@ -11,6 +11,7 @@ import {
   pageCount,
   parseProductsQuery,
 } from '../lib/products-query'
+import { MAX_ID, check, productsQuery } from '../lib/validation'
 
 describe('buildProductsQuery', () => {
   it('sends the original unfiltered request when nothing is set', () => {
@@ -56,6 +57,32 @@ describe('buildProductsQuery', () => {
     expect(buildProductsQuery({ page: 2, size: 10, q: 'mug', sellerId: 4 })).toBe(
       '/api/products?page=2&size=10&q=mug&sellerId=4'
     )
+  })
+
+  it('drops a sellerId past the largest id the API accepts, like any other junk id', () => {
+    expect(buildProductsQuery({ sellerId: MAX_ID })).toBe(`/api/products?page=1&size=20&sellerId=${MAX_ID}`)
+    expect(buildProductsQuery({ sellerId: String(MAX_ID + 1) })).toBe('/api/products?page=1&size=20')
+    expect(parseProductsQuery({ sellerId: '99999999999999999999' }).sellerId).toBeNull()
+  })
+
+  it('never builds a request the API answers 400 on, whatever the visitor typed into the URL', () => {
+    // Each of these is a hand-edited storefront URL; the storefront shows the
+    // red "Could not load products" banner for any 400.
+    const typed = [
+      {},
+      { page: '0', size: '0' },
+      { page: '99999999999', size: '5000' },
+      { q: ` ${'a'.repeat(150)} ` },
+      { sellerId: '0' },
+      { sellerId: String(MAX_ID) },
+      { sellerId: String(MAX_ID + 1) },
+      { sellerId: '99999999999999999999' },
+    ]
+    for (const query of typed) {
+      const url = new URL(buildProductsQuery(parseProductsQuery(query)), 'http://openmarket.invalid')
+      const sent = Object.fromEntries(url.searchParams)
+      expect(check(productsQuery, sent), JSON.stringify(query)).toHaveProperty('data')
+    }
   })
 })
 
