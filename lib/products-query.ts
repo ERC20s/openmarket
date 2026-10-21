@@ -4,7 +4,7 @@
 // The bounds here are exactly the ones pages/api/products.ts answers 400 on:
 //   if (Number.isNaN(page) || page < 1 || Number.isNaN(size) || size < 1 || size > 100)
 //   if (q && q.length > 100) -> 400 'Invalid query'
-//   sellerId must parse and be >= 1 -> otherwise 400 'Invalid sellerId'
+//   sellerId must parse and be 1..MAX_ID -> otherwise 400 'Invalid sellerId'
 // Clamping here means a hand-edited URL never turns into a red error banner on
 // the storefront; it lands on the nearest legal page instead.
 
@@ -14,6 +14,8 @@ export const MIN_SIZE = 1
 export const MAX_SIZE = 100
 /** Deepest page the list routes serve; past it the API answers 400. */
 export const MAX_PAGE = 10_000
+/** Largest id a SQLite INTEGER primary key in this schema is asked for; past it the API answers 400. */
+export const MAX_ID = 2_147_483_647
 export const MAX_Q_LENGTH = 100
 
 /** Storefront state, already validated and safe to send to the API. */
@@ -62,7 +64,7 @@ function clamp(value: number, min: number, max: number): number {
  * - page: clamped to 1..MAX_PAGE, junk falls back to 1
  * - size: clamped to 1..100, junk falls back to 20
  * - q: trimmed and cut to 100 characters
- * - sellerId: a positive integer, or null (junk and 0 or less become null)
+ * - sellerId: an integer in 1..MAX_ID, or null (junk, 0 or less and past MAX_ID become null)
  */
 export function normalizeProductsQuery(input: ProductsQueryInput = {}): ProductsQuery {
   const pageInt = toInt(input.page)
@@ -75,7 +77,7 @@ export function normalizeProductsQuery(input: ProductsQueryInput = {}): Products
     page: pageInt === null ? DEFAULT_PAGE : clamp(pageInt, DEFAULT_PAGE, MAX_PAGE),
     size: sizeInt === null ? DEFAULT_SIZE : clamp(sizeInt, MIN_SIZE, MAX_SIZE),
     q,
-    sellerId: sellerInt === null || sellerInt < 1 ? null : sellerInt,
+    sellerId: sellerInt === null || sellerInt < 1 || sellerInt > MAX_ID ? null : sellerInt,
   }
 }
 

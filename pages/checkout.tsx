@@ -5,7 +5,7 @@ import { useRouter } from 'next/router'
 import { formatPrice } from '../lib/format'
 import { cartCount, clearCart, readStoredCart, writeStoredCart, type CartLine } from '../lib/cart'
 import { buildProductHref, buildSellerHref } from '../lib/products-query'
-import { orderRequestFromQuote } from '../lib/quote'
+import { orderRequestFromQuote } from '../lib/order-request'
 
 // The review step. Everything money-related on this page comes back from
 // POST /api/checkout — the localStorage cart is only the *request*. That is the
@@ -147,7 +147,7 @@ export default function CheckoutPage() {
     setPlaceError(null)
 
     // What the page showed, at the prices it showed — a product the quote
-    // dropped as no longer for sale is not asked for (lib/quote.ts).
+    // dropped as no longer for sale is not asked for (lib/order-request.ts).
     const payload = orderRequestFromQuote(state.quote)
 
     try {
