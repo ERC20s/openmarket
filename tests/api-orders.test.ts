@@ -18,6 +18,8 @@ import {
 import createHandler from '../pages/api/orders/index'
 import { resetRateLimit } from '../lib/rate-limit'
 import { BUYER_COOKIE, hashToken } from '../lib/auth'
+import { MAX_ORDER_TOTAL_CENTS } from '../lib/orders'
+import { MAX_PRICE_CENTS } from '../lib/validation'
 import readHandler from '../pages/api/orders/[id]'
 
 let errorSpy: any
@@ -152,6 +154,31 @@ describe('POST /api/orders', () => {
       expect(typeof res.body.error).toBe('string')
     }
     expect(prismaSpies.order.create).not.toHaveBeenCalled()
+  })
+
+  it('answers 400 and writes nothing when the total would not fit Order.total_cents', async () => {
+    // Three products at the highest allowed price, 99 of each: every line is
+    // within its cap, but 3 x 99 x $100,000.00 is past the signed 32-bit
+    // column, which Prisma refused with P2023 and the route answered 500.
+    prismaSpies.product.findMany.mockResolvedValue(
+      [1, 2, 3].map((id) => fakeProduct({ id, price_cents: MAX_PRICE_CENTS, sellerId: 1, seller: { id: 1, name: 'Pricey' } }))
+    )
+    const lines = [1, 2, 3].map((productId) => ({ productId, quantity: 99 }))
+    expect(3 * 99 * MAX_PRICE_CENTS).toBeGreaterThan(MAX_ORDER_TOTAL_CENTS)
+
+    const res = mockRes()
+    await createHandler(post({ lines }), res)
+
+    expect(res.statusCode).toBe(400)
+    expect(res.body).toEqual({ error: 'Order total too large' })
+    expect(prismaSpies.order.create).not.toHaveBeenCalled()
+
+    // Two of them fit: the cap is the column, not a lower number.
+    expect(2 * 99 * MAX_PRICE_CENTS).toBeLessThanOrEqual(MAX_ORDER_TOTAL_CENTS)
+    const fits = mockRes()
+    await createHandler(post({ lines: lines.slice(0, 2) }), fits)
+    expect(fits.statusCode).toBe(201)
+    expect(fits.body.total).toBe(2 * 99 * MAX_PRICE_CENTS)
   })
 
   it('answers 405 with Allow: POST on a GET, and JSON 500 when the write rejects', async () => {

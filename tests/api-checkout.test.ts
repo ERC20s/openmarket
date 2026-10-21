@@ -10,6 +10,8 @@ vi.mock('@prisma/client', async () => {
 import { prismaSpies, resetPrismaSpies, mockReq, mockRes, fakeProduct } from './helpers/prisma-mock'
 import handler from '../pages/api/checkout'
 import { MAX_LINES } from '../lib/cart'
+import { MAX_ORDER_TOTAL_CENTS } from '../lib/orders'
+import { MAX_PRICE_CENTS } from '../lib/validation'
 
 let errorSpy: any
 
@@ -156,6 +158,24 @@ describe('POST /api/checkout', () => {
     }
 
     expect(prismaSpies.product.findMany).not.toHaveBeenCalled()
+  })
+
+  it('answers 400 for a total POST /api/orders could never write, instead of quoting it', async () => {
+    prismaSpies.product.findMany.mockResolvedValue(
+      [1, 2, 3].map((id) => fakeProduct({ id, price_cents: MAX_PRICE_CENTS, sellerId: 1, seller: { id: 1, name: 'Pricey' } }))
+    )
+    const lines = [1, 2, 3].map((productId) => ({ productId, quantity: 99 }))
+    expect(3 * 99 * MAX_PRICE_CENTS).toBeGreaterThan(MAX_ORDER_TOTAL_CENTS)
+
+    const res = mockRes()
+    await handler(post({ lines }), res)
+    expect(res.statusCode).toBe(400)
+    expect(res.body).toEqual({ error: 'Order total too large' })
+
+    const fits = mockRes()
+    await handler(post({ lines: lines.slice(0, 2) }), fits)
+    expect(fits.statusCode).toBe(200)
+    expect(fits.body.total).toBe(2 * 99 * MAX_PRICE_CENTS)
   })
 
   it('returns 405 with Allow: POST for a GET and never queries', async () => {

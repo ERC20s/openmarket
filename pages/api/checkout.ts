@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client'
 
 import { MAX_LINES, MAX_QUANTITY, MIN_QUANTITY } from '../../lib/cart'
 import { normalizeRequestedLines, priceQuote, readBody, requestedIds } from '../../lib/quote'
+import { MAX_ORDER_TOTAL_CENTS } from '../../lib/orders'
 
 declare global {
   // Allow a single PrismaClient instance to be shared across module reloads in dev
@@ -41,6 +42,13 @@ async function quoteCheckout(req: NextApiRequest, res: NextApiResponse) {
   })
 
   const quote = priceQuote(parsed.requested, rows as any[])
+
+  // The same cap POST /api/orders enforces, so the review page tells the buyer
+  // now rather than quoting a total the order route can never write.
+  if (quote.total > MAX_ORDER_TOTAL_CENTS) {
+    res.status(400).json({ error: 'Order total too large' })
+    return
+  }
 
   // No Order row is written and no payment is taken here: this is a quote.
   // Placing the order is POST /api/orders, which re-prices the same lines.

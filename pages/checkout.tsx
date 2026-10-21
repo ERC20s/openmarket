@@ -5,6 +5,7 @@ import { useRouter } from 'next/router'
 import { formatPrice } from '../lib/format'
 import { cartCount, clearCart, readStoredCart, writeStoredCart, type CartLine } from '../lib/cart'
 import { buildProductHref, buildSellerHref } from '../lib/products-query'
+import { orderRequestFromQuote } from '../lib/quote'
 
 // The review step. Everything money-related on this page comes back from
 // POST /api/checkout — the localStorage cart is only the *request*. That is the
@@ -12,10 +13,14 @@ import { buildProductHref, buildSellerHref } from '../lib/products-query'
 // database price, and anything that changed is listed as a problem before the
 // buyer is asked to confirm.
 //
-// Place order posts the same lines to POST /api/orders, which prices them once
-// more through the same helpers (lib/quote.ts): if anything moved in between it
-// answers 409, this page re-reviews and nothing is written. On success the cart
-// is emptied and the buyer lands on /orders/<reference>.
+// Place order posts the lines *as this page quoted them* to POST /api/orders,
+// which prices them once more through the same helpers (lib/quote.ts). The
+// claim on each line is the price the buyer just saw, not the cart's snapshot:
+// a snapshot whose price moved would be refused with 409 on every click and
+// the order could never be placed. If anything moves between the review and
+// the click the route still answers 409, this page re-reviews and nothing is
+// written. On success the cart is emptied and the buyer lands on
+// /orders/<reference>.
 //
 // As on /cart, storage is read inside an effect so the first client render
 // matches the server markup.
@@ -57,7 +62,7 @@ type State =
   | { status: 'loading' }
   | { status: 'empty' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; quote: Quote; cartTotal: number; lines: CartLine[] }
+  | { status: 'ready'; quote: Quote; cartTotal: number }
 
 export default function CheckoutPage() {
   const router = useRouter()
@@ -121,7 +126,6 @@ export default function CheckoutPage() {
             problems: Array.isArray(data.problems) ? data.problems : [],
           },
           cartTotal,
-          lines,
         })
       } catch {
         if (!cancelled) {
@@ -142,13 +146,9 @@ export default function CheckoutPage() {
     setPlacing(true)
     setPlaceError(null)
 
-    const payload = {
-      lines: state.lines.map((line) => ({
-        productId: line.productId,
-        quantity: line.quantity,
-        price_cents: line.price_cents,
-      })),
-    }
+    // What the page showed, at the prices it showed — a product the quote
+    // dropped as no longer for sale is not asked for (lib/quote.ts).
+    const payload = orderRequestFromQuote(state.quote)
 
     try {
       const response = await fetch('/api/orders', {

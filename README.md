@@ -6,7 +6,10 @@ Local development and DB
 - Install dev dependencies: npm install
 - Generate Prisma client: npm run prisma:generate
 - Create migration and DB: npm run prisma:migrate
-- Seed the DB: npm run prisma:seed
+- Seed the DB: npm run prisma:seed. The seed writes nothing when the database
+  already holds sellers or products (prisma/seed-data.ts checks first), so the
+  setup entry can be run again without doubling the catalogue; delete
+  prisma/dev.db and run setup again for a fresh seed.
 - The schema now carries Order and OrderItem as well as Seller and Product, so
   an existing clone must re-run npm run prisma:generate && npm run prisma:migrate
   once before placing an order.
@@ -88,10 +91,13 @@ Running
   cart disagreed with the marketplace, a warning list naming every product
   whose price moved or that is no longer for sale. It has its own line for
   loading, for an empty cart and for a failed request. Its "Place order" button
-  posts the same lines to POST /api/orders: on success it empties the cart and
-  goes to /orders/<reference>; on 409 (a price moved or a product was delisted
-  since the review) it writes nothing, shows the reason and re-prices the cart
-  so the warning list names what changed.
+  posts the lines as the review priced them (orderRequestFromQuote in
+  lib/quote.ts: the quoted products at the quoted prices, a delisted one left
+  out) to POST /api/orders, so a price that moved while the product sat in the
+  cart is ordered at the price the buyer just saw rather than refused on every
+  click: on success it empties the cart and goes to /orders/<reference>; on 409
+  (a price moved or a product was delisted since the review) it writes nothing,
+  shows the reason and re-prices the cart so the warning list names what changed.
 - The confirmation page at /orders/<reference> (pages/orders/[id].tsx) fetches
   GET /api/orders/<reference> and shows the reference, the status, the bought
   lines grouped by seller with subtotals and the order total. It has the same
@@ -122,8 +128,14 @@ Testing
 
 - Run tests: npm test
 - Browser smoke test: npm run test:e2e (Playwright, after setup and npm run build;
-  it starts npm start itself). It walks storefront -> seller facet and search ->
-  product -> cart -> checkout review. CI runs it after the build.
+  it starts npm start itself). e2e/smoke.e2e.ts walks storefront -> seller facet
+  and search -> product -> cart -> checkout review. e2e/checkout-reprice.e2e.ts
+  adds a product to the cart, moves its price in the database, checks the
+  review names the change and places the order at the new total (one real
+  order per run; the price is put back afterwards). CI runs both after the build.
+- tests/seed.test.ts covers prisma/seed-data.ts against a spy client: an empty
+  database gets 10 sellers and 500 products spread evenly, and a database that
+  already holds rows in either table gets nothing written.
 - tests/api-auth.test.ts covers the authorisation rules: a seller creating,
   editing and delisting only their own products and renaming only their own
   storefront (another seller gets 403, no token 401), and a buyer cancelling
@@ -161,11 +173,15 @@ Testing
   refusals with their messages, the terminal statuses, the reference format and
   its rejection of a bare row id) and lib/quote.ts (body reading, quantity
   clamping of a merged line, the 400 reasons, pricing from the rows rather than the
-  claim, and per-seller grouping). It needs no DOM and no database.
+  claim, and per-seller grouping). tests/quote.test.ts also covers
+  orderRequestFromQuote: the body the review page posts carries the quoted
+  prices and leaves a delisted product out, so re-pricing it finds no problem
+  while re-posting the stale snapshot still would. Neither needs a DOM or a database.
 - tests/api-orders.test.ts covers POST /api/orders (the written order and its
   item snapshots, 409 with nothing written when a price moved or a product
   vanished, the id-only query with no email, a raw JSON string body, seven
-  shapes of 400, 405 with Allow: POST and JSON 500 when the write rejects) and
+  shapes of 400, 400 with nothing written for a total past Order.total_cents
+  while one that fits is still written, 405 with Allow: POST and JSON 500 when the write rejects) and
   GET /api/orders/[id] (lookup by reference with per-seller grouping, 400 for a
   row id or a malformed reference, 404 for an unknown one, 405 with Allow: GET
   and JSON 500).
@@ -202,7 +218,10 @@ API
   of the total. A repeated productId is merged and the merged quantity is
   clamped to 99. A body that is not an array of lines, an empty cart, more than
   50 lines, a productId that is not a positive integer, a quantity outside
-  1..99 or a price_cents claim that is not a whole number of cents answers 400. Nothing is persisted and no payment is taken by this
+  1..99 or a price_cents claim that is not a whole number of cents answers 400. A cart whose
+  total would not fit Order.total_cents (above 2,147,483,647 cents,
+  MAX_ORDER_TOTAL_CENTS in lib/orders.ts) answers 400 { error: 'Order total too large' }
+  here and from POST /api/orders, before any write. Nothing is persisted and no payment is taken by this
   route: it only quotes.
 - POST /api/orders takes the same { lines: [...] } body, prices it again through
   lib/quote.ts and writes the order. It answers 201

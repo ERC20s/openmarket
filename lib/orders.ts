@@ -125,6 +125,15 @@ export function newOrderReference(randomHex: (bytes: number) => string): string 
   return formatOrderReference(randomHex(12))
 }
 
+/**
+ * The largest total an order can be written at: Order.total_cents is a Prisma
+ * Int, a signed 32-bit column. The per-line caps (50 lines x 99 x
+ * $100,000.00) multiply out well past it, so the routes check the quoted total
+ * against this and answer 400 before any write, rather than letting Prisma
+ * refuse the insert and the route answer 500.
+ */
+export const MAX_ORDER_TOTAL_CENTS = 2_147_483_647
+
 /** The total of a set of priced lines, in whole cents. */
 export function orderTotal(lines: { line_total?: number | null }[]): number {
   if (!Array.isArray(lines)) return 0

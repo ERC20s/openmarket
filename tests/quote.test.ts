@@ -4,6 +4,7 @@ import {
   toInt,
   readBody,
   normalizeRequestedLines,
+  orderRequestFromQuote,
   requestedIds,
   groupLinesBySeller,
   priceQuote,
@@ -116,5 +117,39 @@ describe('lib/quote.ts unit helpers', () => {
 
     const p11 = quote.lines.find((l) => l.productId === 11)!
     expect(p11.sellerName).toBe('Seller #22')
+  })
+
+  it('orderRequestFromQuote asks for the quoted lines at the quoted prices, never the stale snapshot', () => {
+    const rows = [
+      { id: 1, title: 'Mug', price_cents: 1500, sellerId: 4, seller: { id: 4, name: 'Acme' } },
+      { id: 2, title: 'Pen', price_cents: 250, sellerId: 7, seller: { id: 7, name: 'Bodega' } },
+    ]
+    // The cart snapshot: product 1 was 1200 when it was added, product 9 has been delisted.
+    const snapshot = { lines: [{ productId: 1, quantity: 2, price_cents: 1200 }, { productId: 2, quantity: 1, price_cents: 250 }, { productId: 9, quantity: 1, price_cents: 100 }] }
+    const reviewed = normalizeRequestedLines(snapshot)
+    if ('error' in reviewed) throw new Error(reviewed.error)
+    const quote = priceQuote(reviewed.requested, rows)
+    expect(quote.problems.map((problem) => problem.code)).toEqual(['price_changed', 'product_missing'])
+
+    const request = orderRequestFromQuote(quote)
+    expect(request).toEqual({
+      lines: [
+        { productId: 1, quantity: 2, price_cents: 1500 },
+        { productId: 2, quantity: 1, price_cents: 250 },
+      ],
+    })
+
+    // Posting that to POST /api/orders prices clean: the claims match the rows
+    // and the delisted product is not asked for, so the order can be placed.
+    const again = normalizeRequestedLines(request)
+    if ('error' in again) throw new Error(again.error)
+    const placed = priceQuote(again.requested, rows)
+    expect(placed.problems).toEqual([])
+    expect(placed.total).toBe(2 * 1500 + 250)
+
+    // Whereas re-posting the snapshot, as the page used to, is refused again.
+    expect(priceQuote(reviewed.requested, rows).problems).not.toEqual([])
+
+    expect(orderRequestFromQuote({ lines: [] })).toEqual({ lines: [] })
   })
 })
