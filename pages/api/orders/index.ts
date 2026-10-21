@@ -5,7 +5,7 @@ import { PrismaClient } from '@prisma/client'
 
 import { MAX_LINES, MAX_QUANTITY, MIN_QUANTITY } from '../../../lib/cart'
 import { normalizeRequestedLines, priceQuote, readBody, requestedIds } from '../../../lib/quote'
-import { INITIAL_ORDER_STATUS, newOrderReference } from '../../../lib/orders'
+import { INITIAL_ORDER_STATUS, MAX_ORDER_TOTAL_CENTS, newOrderReference } from '../../../lib/orders'
 
 declare global {
   // Allow a single PrismaClient instance to be shared across module reloads in dev
@@ -78,6 +78,14 @@ async function placeOrder(req: NextApiRequest, res: NextApiResponse) {
 
   if (quote.lines.length === 0) {
     res.status(400).json({ error: 'Cart is empty' })
+    return
+  }
+
+  // A total past what Order.total_cents can hold would make Prisma refuse the
+  // insert (P2023) and this route answer 500 for a cart that passed every
+  // other check. Refuse it here, before the write, and say why.
+  if (quote.total > MAX_ORDER_TOTAL_CENTS) {
+    res.status(400).json({ error: 'Order total too large' })
     return
   }
 

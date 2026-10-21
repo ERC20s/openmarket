@@ -8,7 +8,7 @@
     "start": "next start -p 3000",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init",
-    "prisma:seed": "ts-node --transpile-only prisma/seed.ts",
+    "prisma:seed": "ts-node --transpile-only -O '{\"module\":\"commonjs\"}' prisma/seed.ts",
     "seller:token": "ts-node --transpile-only -O '{\"module\":\"commonjs\"}' prisma/issue-seller-token.ts",
     "test": "vitest",
     "test:e2e": "playwright test"
