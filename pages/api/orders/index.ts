@@ -28,12 +28,16 @@ const prisma = (process.env.NODE_ENV === 'production')
 import { apiRoute } from '../../../lib/api'
 
 import { allowRequest } from '../../../lib/rate-limit'
+import { buyerCookie, buyerToken, hashToken, newToken } from '../../../lib/auth'
 
 export default apiRoute(async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Rate limit excessive repeated POSTs to avoid spurious DB writes.
+  // Rate limit excessive repeated POSTs to avoid spurious DB writes. The client
+  // is keyed by its socket address (or, behind TRUSTED_PROXY, the hop that
+  // proxy appended) — never by a header the client wrote itself.
   if (req.method === 'POST') {
-    const ok = allowRequest(req)
-    if (!ok) {
+    const { allowed, retryAfterMs } = allowRequest(req)
+    if (!allowed) {
+      res.setHeader('Retry-After', String(Math.max(1, Math.ceil(retryAfterMs / 1000))))
       res.status(429).json({ error: 'Too many requests' })
       return
     }
@@ -45,7 +49,7 @@ export default apiRoute(async function handler(req: NextApiRequest, res: NextApi
 async function placeOrder(req: NextApiRequest, res: NextApiResponse) {
   const parsed = normalizeRequestedLines(readBody(req))
   if ('error' in parsed) {
-    res.status(422).json({ error: parsed.error })
+    res.status(400).json({ error: parsed.error })
     return
   }
 
@@ -73,13 +77,18 @@ async function placeOrder(req: NextApiRequest, res: NextApiResponse) {
   }
 
   if (quote.lines.length === 0) {
-    res.status(422).json({ error: 'Cart is empty' })
+    res.status(400).json({ error: 'Cart is empty' })
     return
   }
 
   // The random source is injected here, on the server, so lib/orders.ts stays
   // free of node builtins and can be imported by the confirmation page too.
   const reference = newOrderReference((bytes) => randomBytes(bytes).toString('hex'))
+
+  // The order belongs to this browser: reuse the buyer cookie it already holds
+  // or hand it a new one, and keep only the hash on the order. Changing the
+  // order later (PATCH /api/orders/[id]) needs the same cookie.
+  const buyer = buyerToken(req) ?? newToken()
 
   // One nested create: the order and its items are written in a single
   // statement, so a half-written order cannot exist. Every item copies the
@@ -90,6 +99,7 @@ async function placeOrder(req: NextApiRequest, res: NextApiResponse) {
       reference,
       status: INITIAL_ORDER_STATUS,
       total_cents: quote.total,
+      buyerTokenHash: hashToken(buyer),
       items: {
         create: quote.lines.map((line) => ({
           productId: line.productId,
@@ -105,6 +115,7 @@ async function placeOrder(req: NextApiRequest, res: NextApiResponse) {
     include: { items: true },
   })
 
+  res.setHeader('Set-Cookie', buyerCookie(buyer))
   res.status(201).json({
     reference: (created && created.reference) || reference,
     status: (created && created.status) || INITIAL_ORDER_STATUS,

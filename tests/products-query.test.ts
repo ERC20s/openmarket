@@ -6,6 +6,7 @@ import {
   buildSellerHref,
   buildStorefrontHref,
   hasFilters,
+  MAX_PAGE,
   normalizeProductsQuery,
   pageCount,
   parseProductsQuery,
@@ -28,7 +29,7 @@ describe('buildProductsQuery', () => {
     )
   })
 
-  it('caps the search text at 100 characters, the API 422 boundary', () => {
+  it('caps the search text at 100 characters, the API 400 boundary', () => {
     const long = 'a'.repeat(150)
     const url = buildProductsQuery({ q: long })
     expect(url).toBe(`/api/products?page=1&size=20&q=${'a'.repeat(100)}`)
@@ -78,13 +79,18 @@ describe('parseProductsQuery', () => {
     expect(parseProductsQuery({ page: [] }).page).toBe(1)
   })
 
-  it('falls back instead of passing junk the API would 422 on', () => {
+  it('falls back instead of passing junk the API would 400 on', () => {
     expect(parseProductsQuery({ page: 'x', size: '9999', sellerId: 'x' })).toEqual({
       page: 1,
       size: 100,
       q: '',
       sellerId: null,
     })
+  })
+
+  it('clamps a page past the API cap to the last page the API serves', () => {
+    expect(parseProductsQuery({ page: String(MAX_PAGE + 1) }).page).toBe(MAX_PAGE)
+    expect(normalizeProductsQuery({ page: MAX_PAGE }).page).toBe(MAX_PAGE)
   })
 })
 
@@ -120,7 +126,7 @@ describe('buildProductHref', () => {
     expect(buildProductHref(7, { q: '   ' })).toBe('/products/7')
   })
 
-  it('falls back to the storefront href for an id the API would 422 on', () => {
+  it('falls back to the storefront href for an id the API would 400 on', () => {
     expect(buildProductHref('abc')).toBe('/')
     expect(buildProductHref(0)).toBe('/')
     expect(buildProductHref(-3)).toBe('/')
@@ -158,7 +164,7 @@ describe('buildSellerHref', () => {
     expect(buildSellerHref(4, { page: 'nope' })).toBe('/sellers/4')
   })
 
-  it('falls back to the storefront href for an id the API would 422 on', () => {
+  it('falls back to the storefront href for an id the API would 400 on', () => {
     expect(buildSellerHref('abc')).toBe('/')
     expect(buildSellerHref(0)).toBe('/')
     expect(buildSellerHref(-3)).toBe('/')

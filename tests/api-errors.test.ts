@@ -26,12 +26,14 @@ afterEach(() => {
 })
 
 describe('method guard on /api/products', () => {
-  it('returns 405 with Allow: GET for a POST and never queries', async () => {
+  // POST is a seller creating a product now (tests/api-auth.test.ts); any other
+  // verb is still refused before a query runs.
+  it('returns 405 with Allow: GET, POST for a PUT and never queries', async () => {
     const res = mockRes()
-    await productsHandler(mockReq('/api/products', 'POST'), res)
+    await productsHandler(mockReq('/api/products', 'PUT'), res)
 
     expect(res.statusCode).toBe(405)
-    expect(res.headers.allow).toBe('GET')
+    expect(res.headers.allow).toBe('GET, POST')
     expect(res.body).toHaveProperty('error')
     expect(prismaSpies.product.count).not.toHaveBeenCalled()
     expect(prismaSpies.product.findMany).not.toHaveBeenCalled()

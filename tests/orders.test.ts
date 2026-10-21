@@ -130,11 +130,11 @@ describe('lib/quote.ts, shared by /api/checkout and /api/orders', () => {
     expect(readBody({ body: '' })).toBe(null)
   })
 
-  it('clamps quantities, merges a repeated product and names the 422 reason', () => {
+  it('merges a repeated product, clamps the merged quantity and names the 400 reason', () => {
     const merged = normalizeRequestedLines({
       lines: [
-        { productId: 3, quantity: 200 },
-        { productId: 3, quantity: 1, price_cents: 500 },
+        { productId: 3, quantity: 60 },
+        { productId: 3, quantity: 50, price_cents: 500 },
       ],
     })
     // The first line made no price claim, so the later line's claim is kept:
@@ -145,6 +145,9 @@ describe('lib/quote.ts, shared by /api/checkout and /api/orders', () => {
     expect(normalizeRequestedLines({ lines: [] })).toEqual({ error: 'Cart is empty' })
     expect(normalizeRequestedLines({ lines: [{ productId: 0 }] })).toEqual({ error: 'Invalid productId' })
     expect(normalizeRequestedLines({ lines: ['nope'] })).toEqual({ error: 'Invalid line' })
+    // Each line's own quantity must be 1..99 — only a merge is clamped.
+    expect(normalizeRequestedLines({ lines: [{ productId: 3, quantity: 200 }] })).toEqual({ error: 'Invalid quantity' })
+    expect(normalizeRequestedLines({ lines: [{ productId: 3, quantity: 0 }] })).toEqual({ error: 'Invalid quantity' })
   })
 
   it('prices from the rows, not from the claim, and reports what moved', () => {

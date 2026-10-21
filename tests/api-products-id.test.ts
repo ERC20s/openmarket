@@ -38,24 +38,24 @@ describe('GET /api/products/[id]', () => {
     expect(res.body).toHaveProperty('error')
   })
 
-  it('returns 422 for a non-numeric or zero id', async () => {
+  it('returns 400 for a non-numeric or zero id', async () => {
     const notANumber = mockRes()
     await handler(mockReq('/api/products/abc'), notANumber)
-    expect(notANumber.statusCode).toBe(422)
+    expect(notANumber.statusCode).toBe(400)
 
     const zero = mockRes()
     await handler(mockReq('/api/products/0'), zero)
-    expect(zero.statusCode).toBe(422)
+    expect(zero.statusCode).toBe(400)
 
     expect(prismaSpies.product.findUnique).not.toHaveBeenCalled()
   })
 
-  it('returns 405 with Allow: GET for a POST', async () => {
+  it('returns 405 with Allow: GET, PATCH, DELETE for a POST', async () => {
     const res = mockRes()
     await handler(mockReq('/api/products/7', 'POST'), res)
 
     expect(res.statusCode).toBe(405)
-    expect(res.headers.allow).toBe('GET')
+    expect(res.headers.allow).toBe('GET, PATCH, DELETE')
     expect(prismaSpies.product.findUnique).not.toHaveBeenCalled()
   })
 })

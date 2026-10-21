@@ -17,6 +17,7 @@ import {
 } from './helpers/prisma-mock'
 import createHandler from '../pages/api/orders/index'
 import { resetRateLimit } from '../lib/rate-limit'
+import { BUYER_COOKIE, hashToken } from '../lib/auth'
 import readHandler from '../pages/api/orders/[id]'
 
 let errorSpy: any
@@ -40,6 +41,15 @@ function post(body: any) {
 // A valid reference: om_ plus 24 hex characters, built rather than typed so the
 // length can never drift away from what lib/orders.ts accepts.
 const REF = 'om_' + 'a1b2'.repeat(6)
+
+// The buyer cookie the order under test was placed with (43 base64url chars,
+// the shape lib/auth.ts issues), and a PATCH that carries it.
+const BUYER = 'b'.repeat(43)
+function patchAsBuyer(body: any) {
+  const req = mockReq(`/api/orders/${REF}`, 'PATCH', body)
+  req.headers.cookie = `${BUYER_COOKIE}=${BUYER}`
+  return req
+}
 
 describe('POST /api/orders', () => {
   it('writes the order and its item snapshots at the database price', async () => {
@@ -134,11 +144,11 @@ describe('POST /api/orders', () => {
     expect(res.body.total).toBe(1234)
   })
 
-  it('answers 422 for a body that is not a cart', async () => {
+  it('answers 400 for a body that is not a cart', async () => {
     for (const body of [undefined, null, 'not json', {}, { lines: 'x' }, { lines: [] }, { lines: [{ productId: 0 }] }]) {
       const res = mockRes()
       await createHandler(post(body), res)
-      expect(res.statusCode).toBe(422)
+      expect(res.statusCode).toBe(400)
       expect(typeof res.body.error).toBe('string')
     }
     expect(prismaSpies.order.create).not.toHaveBeenCalled()
@@ -183,11 +193,11 @@ describe('GET /api/orders/[id]', () => {
     expect(JSON.stringify(res.body)).not.toContain('email')
   })
 
-  it('answers 422 for anything that is not a reference — a row id cannot be walked', async () => {
-    for (const path of ['/api/orders/1', '/api/orders/om_123', '/api/orders/']) {
+  it('answers 400 for anything that is not a reference — a row id cannot be walked', async () => {
+    for (const path of ['/api/orders/1', '/api/orders/om_123', '/api/orders/', '/api/orders/%E0%A4%A']) {
       const res = mockRes()
       await readHandler(mockReq(path), res)
-      expect(res.statusCode).toBe(422)
+      expect(res.statusCode).toBe(400)
       expect(res.body).toEqual({ error: 'Invalid reference' })
     }
     expect(prismaSpies.order.findUnique).not.toHaveBeenCalled()
@@ -217,34 +227,43 @@ describe('GET /api/orders/[id]', () => {
   })
 
   describe('PATCH /api/orders/[id]', () => {
-    it('answers 422 for an invalid target status', async () => {
-      const res = mockRes()
-      await readHandler(mockReq(`/api/orders/${REF}`, 'PATCH', { status: 123 }), res)
-      expect(res.statusCode).toBe(422)
-      expect(res.body).toEqual({ error: 'Invalid target status' })
+    it('answers 400 for an invalid target status', async () => {
+      for (const body of [{ status: 123 }, { status: 'refunded' }, {}, null]) {
+        const res = mockRes()
+        await readHandler(patchAsBuyer(body), res)
+        expect(res.statusCode, JSON.stringify(body)).toBe(400)
+        expect(res.body).toEqual({ error: 'Invalid target status' })
+      }
+      expect(prismaSpies.order.findUnique).not.toHaveBeenCalled()
     })
 
     it('answers 404 for an unknown reference', async () => {
       prismaSpies.order.findUnique.mockResolvedValue(null)
       const res = mockRes()
-      await readHandler(mockReq(`/api/orders/${REF}`, 'PATCH', { status: 'cancelled' }), res)
+      await readHandler(patchAsBuyer({ status: 'cancelled' }), res)
       expect(res.statusCode).toBe(404)
       expect(res.body).toEqual({ error: 'Order not found' })
     })
 
     it('answers 409 when the move is refused (already cancelled)', async () => {
-      prismaSpies.order.findUnique.mockResolvedValue(fakeOrder({ reference: REF, status: 'cancelled' }))
+      prismaSpies.order.findUnique.mockResolvedValue(
+        fakeOrder({ reference: REF, status: 'cancelled', buyerTokenHash: hashToken(BUYER) })
+      )
       const res = mockRes()
-      await readHandler(mockReq(`/api/orders/${REF}`, 'PATCH', { status: 'cancelled' }), res)
+      await readHandler(patchAsBuyer({ status: 'cancelled' }), res)
       expect(res.statusCode).toBe(409)
       expect(typeof res.body.error).toBe('string')
     })
 
     it('updates the order on a successful cancel', async () => {
-      prismaSpies.order.findUnique.mockResolvedValue(fakeOrder({ reference: REF, status: 'pending' }))
-      prismaSpies.order.update.mockResolvedValue(fakeOrder({ reference: REF, status: 'cancelled' }))
+      prismaSpies.order.findUnique.mockResolvedValue(
+        fakeOrder({ reference: REF, status: 'pending', buyerTokenHash: hashToken(BUYER) })
+      )
+      prismaSpies.order.update.mockResolvedValue(
+        fakeOrder({ reference: REF, status: 'cancelled', buyerTokenHash: hashToken(BUYER) })
+      )
       const res = mockRes()
-      await readHandler(mockReq(`/api/orders/${REF}`, 'PATCH', { status: 'cancelled' }), res)
+      await readHandler(patchAsBuyer({ status: 'cancelled' }), res)
       expect(res.statusCode).toBe(200)
       expect(res.body.status).toBe('cancelled')
       expect(prismaSpies.order.update).toHaveBeenCalledWith({ where: { reference: REF }, data: { status: 'cancelled' }, include: { items: true } })

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
 vi.mock('@prisma/client', async () => {
   const { PrismaClientMock } = await import('./helpers/prisma-mock')
@@ -47,20 +47,59 @@ describe('rate limiting POST /api/orders', () => {
     expect(other.statusCode).toBe(201)
   })
 
-  it('keys on the first X-Forwarded-For entry, not the socket address', async () => {
+  it('ignores X-Forwarded-For without TRUSTED_PROXY: rotating a spoofed header does not reset the limit', async () => {
     for (let i = 0; i < 10; i++) {
       const res = mockRes()
-      await createHandler(fromSocket(`192.0.2.${i + 1}`, '203.0.113.1, 198.51.100.2'), res)
+      await createHandler(fromSocket('198.51.100.7', `203.0.113.${i + 1}`), res)
       expect(res.statusCode).toBe(201)
     }
 
     const blocked = mockRes()
-    await createHandler(fromSocket('192.0.2.99', '203.0.113.1, 198.51.100.3'), blocked)
+    await createHandler(fromSocket('198.51.100.7', '203.0.113.200'), blocked)
     expect(blocked.statusCode).toBe(429)
+    expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0)
+    expect(prismaSpies.order.create).toHaveBeenCalledTimes(10)
+  })
 
-    // Same proxy hop, different originating client: still allowed.
-    const other = mockRes()
-    await createHandler(fromSocket('192.0.2.99', '203.0.113.2, 198.51.100.2'), other)
-    expect(other.statusCode).toBe(201)
+  describe('behind TRUSTED_PROXY', () => {
+    const saved = process.env.TRUSTED_PROXY
+    beforeEach(() => {
+      process.env.TRUSTED_PROXY = '10.0.0.5'
+    })
+    afterEach(() => {
+      if (saved === undefined) delete process.env.TRUSTED_PROXY
+      else process.env.TRUSTED_PROXY = saved
+    })
+
+    it('keys on the hop the proxy appended, so a spoofed first entry changes nothing', async () => {
+      // The client writes whatever it likes first; the proxy appends the
+      // address it actually saw (203.0.113.9) as the last entry.
+      for (let i = 0; i < 10; i++) {
+        const res = mockRes()
+        await createHandler(fromSocket('10.0.0.5', `192.0.2.${i + 1}, 203.0.113.9`), res)
+        expect(res.statusCode).toBe(201)
+      }
+
+      const blocked = mockRes()
+      await createHandler(fromSocket('10.0.0.5', '192.0.2.250, 203.0.113.9'), blocked)
+      expect(blocked.statusCode).toBe(429)
+
+      // A different real client behind the same proxy has its own window.
+      const other = mockRes()
+      await createHandler(fromSocket('10.0.0.5', '192.0.2.1, 203.0.113.10'), other)
+      expect(other.statusCode).toBe(201)
+    })
+
+    it('ignores X-Forwarded-For from a peer that is not the trusted proxy', async () => {
+      for (let i = 0; i < 10; i++) {
+        const res = mockRes()
+        await createHandler(fromSocket('198.51.100.8', `203.0.113.${i + 1}`), res)
+        expect(res.statusCode).toBe(201)
+      }
+
+      const blocked = mockRes()
+      await createHandler(fromSocket('198.51.100.8', '203.0.113.99'), blocked)
+      expect(blocked.statusCode).toBe(429)
+    })
   })
 })

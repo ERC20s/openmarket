@@ -29,7 +29,7 @@ export default apiRoute(async function handler(req: NextApiRequest, res: NextApi
 async function quoteCheckout(req: NextApiRequest, res: NextApiResponse) {
   const parsed = normalizeRequestedLines(readBody(req))
   if ('error' in parsed) {
-    res.status(422).json({ error: parsed.error })
+    res.status(400).json({ error: parsed.error })
     return
   }
 

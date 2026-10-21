@@ -25,3 +25,8 @@ jobs:
 
       # The production build from the README.
       - run: npm run build
+
+      # The browser smoke test drives that build against the seeded database:
+      # storefront -> faceted search -> product -> cart -> checkout page.
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e

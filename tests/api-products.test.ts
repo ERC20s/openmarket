@@ -50,24 +50,24 @@ describe('GET /api/products pagination', () => {
     )
   })
 
-  it('returns 422 for page=0 without touching the database', async () => {
+  it('returns 400 for page=0 without touching the database', async () => {
     const res = mockRes()
     await handler(mockReq('/api/products?page=0&size=20'), res)
 
-    expect(res.statusCode).toBe(422)
+    expect(res.statusCode).toBe(400)
     expect(res.body).toHaveProperty('error')
     expect(prismaSpies.product.count).not.toHaveBeenCalled()
     expect(prismaSpies.product.findMany).not.toHaveBeenCalled()
   })
 
-  it('returns 422 for a size above the 100 cap and for a non-numeric size', async () => {
+  it('returns 400 for a size above the 100 cap and for a non-numeric size', async () => {
     const tooBig = mockRes()
     await handler(mockReq('/api/products?size=101'), tooBig)
-    expect(tooBig.statusCode).toBe(422)
+    expect(tooBig.statusCode).toBe(400)
 
     const nonsense = mockRes()
     await handler(mockReq('/api/products?size=abc'), nonsense)
-    expect(nonsense.statusCode).toBe(422)
+    expect(nonsense.statusCode).toBe(400)
 
     expect(prismaSpies.product.findMany).not.toHaveBeenCalled()
   })

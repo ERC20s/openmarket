@@ -70,8 +70,8 @@ export default function OrderPage() {
         const data = await response.json().catch(() => null)
         if (cancelled) return
 
-        // 404 and 422 are both "no such order", not the red banner.
-        if (response.status === 404 || response.status === 422) {
+        // 404 and 400 are both "no such order", not the red banner.
+        if (response.status === 404 || response.status === 400) {
           setState({ status: 'missing' })
           return
         }

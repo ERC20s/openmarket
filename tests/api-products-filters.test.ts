@@ -91,7 +91,7 @@ describe('GET /api/products filters', () => {
     const res = mockRes()
     await handler(mockReq(`/api/products?q=${long}`), res)
 
-    expect(res.statusCode).toBe(422)
+    expect(res.statusCode).toBe(400)
     expect(prismaSpies.product.count).not.toHaveBeenCalled()
     expect(prismaSpies.product.findMany).not.toHaveBeenCalled()
   })
@@ -100,7 +100,7 @@ describe('GET /api/products filters', () => {
     const res = mockRes()
     await handler(mockReq('/api/products?sellerId=abc'), res)
 
-    expect(res.statusCode).toBe(422)
+    expect(res.statusCode).toBe(400)
     expect(prismaSpies.product.count).not.toHaveBeenCalled()
     expect(prismaSpies.product.findMany).not.toHaveBeenCalled()
   })

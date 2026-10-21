@@ -35,7 +35,7 @@ type SellerResponse = {
 
 // The same four states pages/products/[id].tsx uses: a seller who does not
 // exist must never look like a broken server.
-//   'missing' = the API's 404 'Seller not found' or 422 'Invalid id'
+//   'missing' = the API's 404 'Seller not found' or 400 'Invalid id'
 type Status = 'loading' | 'missing' | 'error' | 'ready'
 
 export default function SellerPage() {
@@ -46,7 +46,7 @@ export default function SellerPage() {
   const [total, setTotal] = useState(0)
 
   // Only page and size are meaningful here; parseProductsQuery clamps them to
-  // the same bounds the API answers 422 on, so /sellers/1?page=0 lands on
+  // the same bounds the API answers 400 on, so /sellers/1?page=0 lands on
   // page 1 rather than the red error banner.
   const query = useMemo(
     () => parseProductsQuery(router.query as RouterQueryLike),
@@ -64,7 +64,7 @@ export default function SellerPage() {
     if (!router.isReady) return
 
     if (!validId) {
-      // The same judgement the API makes (422 'Invalid id'); no point in a
+      // The same judgement the API makes (400 'Invalid id'); no point in a
       // round trip for /sellers/abc.
       setSeller(null)
       setProducts([])
@@ -78,7 +78,7 @@ export default function SellerPage() {
 
     fetch(`/api/sellers/${numericId}?page=${query.page}&size=${query.size}`)
       .then((res) => {
-        if (res.status === 404 || res.status === 422) return null
+        if (res.status === 404 || res.status === 400) return null
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json() as Promise<SellerResponse>
       })

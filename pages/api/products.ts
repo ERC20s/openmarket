@@ -1,6 +1,8 @@
 import { NextApiRequest, NextApiResponse } from 'next'
 import { PrismaClient } from '@prisma/client'
 
+import { readBody } from '../../lib/quote'
+
 declare global {
   // Allow a single PrismaClient instance to be shared across module reloads in dev
   // eslint-disable-next-line no-var
@@ -12,40 +14,23 @@ const prisma = (process.env.NODE_ENV === 'production')
   : (globalThis as any).__prisma ?? ((globalThis as any).__prisma = new PrismaClient())
 
 import { apiRoute } from '../../lib/api'
-import { parsePageSize } from '../../lib/pagination'
+import { UNAUTHENTICATED, authenticateSeller } from '../../lib/auth'
+import { parseOr400, productCreateBody, productsQuery, queryOf, requestUrl } from '../../lib/validation'
 
 export default apiRoute(async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method === 'POST') {
+    await createProduct(req, res)
+    return
+  }
   await listProducts(req, res)
-}, { methods: ['GET'], name: 'GET /api/products' })
+}, { methods: ['GET', 'POST'], name: '/api/products' })
 
 async function listProducts(req: NextApiRequest, res: NextApiResponse) {
-  const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
-  const pageRaw = url.searchParams.get('page')
-  const sizeRaw = url.searchParams.get('size')
+  const query = parseOr400(res, productsQuery, queryOf(requestUrl(req), ['page', 'size', 'q', 'sellerId']))
+  if (!query) return
 
-  const { page, size, skip, error } = parsePageSize(pageRaw, sizeRaw)
-  if (error) {
-    res.status(422).json({ error })
-    return
-  }
-
-  const qRaw = url.searchParams.get('q') ?? ''
-  const q = qRaw.trim()
-  if (q && q.length > 100) {
-    res.status(422).json({ error: 'Invalid query' })
-    return
-  }
-
-  const sellerIdRaw = url.searchParams.get('sellerId')
-  let sellerId: number | undefined = undefined
-  if (sellerIdRaw !== null) {
-    const parsed = parseInt(sellerIdRaw, 10)
-    if (Number.isNaN(parsed) || parsed < 1) {
-      res.status(422).json({ error: 'Invalid sellerId' })
-      return
-    }
-    sellerId = parsed
-  }
+  const { page, size, q, sellerId } = query
+  const skip = (page - 1) * size
 
   // Build where only if any filter is present; when no filters are given we
   // keep the original calls (no where) so existing behaviour and tests stay
@@ -75,4 +60,24 @@ async function listProducts(req: NextApiRequest, res: NextApiResponse) {
   ])
 
   res.status(200).json({ items, total, page, size })
+}
+
+// A seller lists a new product under their own storefront. The seller comes
+// from the bearer token, never from the body: a body naming a sellerId is
+// refused by the strict schema rather than trusted or silently dropped.
+async function createProduct(req: NextApiRequest, res: NextApiResponse) {
+  const seller = await authenticateSeller(prisma, req)
+  if (!seller) {
+    res.status(401).json(UNAUTHENTICATED)
+    return
+  }
+
+  const body = parseOr400(res, productCreateBody, readBody(req))
+  if (!body) return
+
+  const product = await prisma.product.create({
+    data: { ...body, sellerId: seller.id },
+    include: { seller: { select: { id: true, name: true } } },
+  })
+  res.status(201).json(product)
 }

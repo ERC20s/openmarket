@@ -24,7 +24,7 @@ const prisma = (process.env.NODE_ENV === 'production')
 // the same order, and never the raw order id or reference.
 
 import { apiRoute } from '../../../../lib/api'
-import { parsePageSize } from '../../../../lib/pagination'
+import { idParam, paginationQuery, parseOr400, pathSegment, queryOf, requestUrl } from '../../../../lib/validation'
 
 export default apiRoute(async function handler(req: NextApiRequest, res: NextApiResponse) {
   await getSellerOrders(req, res)
@@ -32,30 +32,14 @@ export default apiRoute(async function handler(req: NextApiRequest, res: NextApi
 
 async function getSellerOrders(req: NextApiRequest, res: NextApiResponse) {
   // Expect URLs like /api/sellers/4/orders
-  const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
-  const parts = url.pathname.split('/').filter(Boolean)
-  const idPart = parts[parts.length - 2]
-  const id = parseInt(idPart, 10)
+  const url = requestUrl(req)
+  const id = parseOr400(res, idParam, pathSegment(url, 1))
+  if (id === undefined) return
 
-  if (Number.isNaN(id) || id < 1) {
-    res.status(422).json({ error: 'Invalid id' })
-    return
-  }
-
-  if (req.method && req.method !== 'GET') {
-    res.setHeader('Allow', 'GET')
-    res.status(405).json({ error: 'Method not allowed' })
-    return
-  }
-
-  const pageRaw = url.searchParams.get('page')
-  const sizeRaw = url.searchParams.get('size')
-
-  const { page, size, skip, error } = parsePageSize(pageRaw, sizeRaw)
-  if (error) {
-    res.status(422).json({ error })
-    return
-  }
+  const query = parseOr400(res, paginationQuery, queryOf(url, ['page', 'size']))
+  if (!query) return
+  const { page, size } = query
+  const skip = (page - 1) * size
 
   // Same seller shape every other seller route ships: id and name only.
   const seller = await prisma.seller.findUnique({

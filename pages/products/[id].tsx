@@ -26,7 +26,7 @@ type Product = {
 
 // Four distinct states, the same discipline as pages/index.tsx: a product that
 // does not exist must never look like a broken server.
-//   'missing' = the API's 404 'Product not found' or 422 'Invalid id'
+//   'missing' = the API's 404 'Product not found' or 400 'Invalid id'
 type Status = 'loading' | 'missing' | 'error' | 'ready'
 
 export default function ProductPage() {
@@ -55,7 +55,7 @@ export default function ProductPage() {
 
     const numericId = parseInt(String(id ?? ''), 10)
     if (!Number.isFinite(numericId) || numericId < 1) {
-      // The same judgement the API makes (422 'Invalid id'); no point in a
+      // The same judgement the API makes (400 'Invalid id'); no point in a
       // round trip for /products/abc.
       setProduct(null)
       setStatus('missing')
@@ -69,7 +69,7 @@ export default function ProductPage() {
 
     fetch(`/api/products/${numericId}`)
       .then((res) => {
-        if (res.status === 404 || res.status === 422) return null
+        if (res.status === 404 || res.status === 400) return null
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json() as Promise<Product>
       })
