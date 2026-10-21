@@ -6,3 +6,4 @@ prisma/dev.db-journal
 prisma/migrations/dev.db*
 *.log
 .DS_Store
+/test-results/

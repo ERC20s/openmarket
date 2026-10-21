@@ -1,10 +1,10 @@
 // The one place that turns storefront state (search text, seller filter, page)
 // into a GET /api/products URL, and reads it back off a router query object.
 //
-// The bounds here are exactly the ones pages/api/products.ts answers 422 on:
+// The bounds here are exactly the ones pages/api/products.ts answers 400 on:
 //   if (Number.isNaN(page) || page < 1 || Number.isNaN(size) || size < 1 || size > 100)
-//   if (q && q.length > 100) -> 422 'Invalid query'
-//   sellerId must parse and be >= 1 -> otherwise 422 'Invalid sellerId'
+//   if (q && q.length > 100) -> 400 'Invalid query'
+//   sellerId must parse and be >= 1 -> otherwise 400 'Invalid sellerId'
 // Clamping here means a hand-edited URL never turns into a red error banner on
 // the storefront; it lands on the nearest legal page instead.
 
@@ -12,6 +12,8 @@ export const DEFAULT_PAGE = 1
 export const DEFAULT_SIZE = 20
 export const MIN_SIZE = 1
 export const MAX_SIZE = 100
+/** Deepest page the list routes serve; past it the API answers 400. */
+export const MAX_PAGE = 10_000
 export const MAX_Q_LENGTH = 100
 
 /** Storefront state, already validated and safe to send to the API. */
@@ -57,7 +59,7 @@ function clamp(value: number, min: number, max: number): number {
 /**
  * Normalise loose input into a ProductsQuery.
  *
- * - page: floored at 1, junk falls back to 1
+ * - page: clamped to 1..MAX_PAGE, junk falls back to 1
  * - size: clamped to 1..100, junk falls back to 20
  * - q: trimmed and cut to 100 characters
  * - sellerId: a positive integer, or null (junk and 0 or less become null)
@@ -70,7 +72,7 @@ export function normalizeProductsQuery(input: ProductsQueryInput = {}): Products
   const q = typeof input.q === 'string' ? input.q.trim().slice(0, MAX_Q_LENGTH) : ''
 
   return {
-    page: pageInt === null ? DEFAULT_PAGE : Math.max(DEFAULT_PAGE, pageInt),
+    page: pageInt === null ? DEFAULT_PAGE : clamp(pageInt, DEFAULT_PAGE, MAX_PAGE),
     size: sizeInt === null ? DEFAULT_SIZE : clamp(sizeInt, MIN_SIZE, MAX_SIZE),
     q,
     sellerId: sellerInt === null || sellerInt < 1 ? null : sellerInt,
@@ -131,7 +133,7 @@ export function buildStorefrontHref(input: ProductsQueryInput = {}): string {
  * clean '/products/7'.
  *
  * An id that is not a positive integer is not a product the API can answer for
- * (pages/api/products/[id].ts answers 422 'Invalid id' on it), so rather than
+ * (pages/api/products/[id].ts answers 400 'Invalid id' on it), so rather than
  * link to /products/NaN this falls back to the storefront href for the same
  * state — a bad row in the list can never produce a broken link.
  */
@@ -159,7 +161,7 @@ export function buildProductHref(
  * paged by GET /api/sellers/<id>?page=&size=.
  *
  * An id that is not a positive integer is not a seller the API can answer for
- * (pages/api/sellers/[id].ts answers 422 'Invalid id' on it), so rather than
+ * (pages/api/sellers/[id].ts answers 400 'Invalid id' on it), so rather than
  * link to /sellers/NaN this falls back to the storefront href for the same
  * state, exactly as buildProductHref does.
  */

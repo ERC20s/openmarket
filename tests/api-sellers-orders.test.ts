@@ -78,14 +78,14 @@ describe('GET /api/sellers/[id]/orders', () => {
     expect(prismaSpies.orderItem.findMany).not.toHaveBeenCalled()
   })
 
-  it('returns 422 for a bad id or a bad page, and 405 with Allow: GET for a POST', async () => {
+  it('returns 400 for a bad id or a bad page, and 405 with Allow: GET for a POST', async () => {
     const badId = mockRes()
     await handler(mockReq('/api/sellers/abc/orders'), badId)
-    expect(badId.statusCode).toBe(422)
+    expect(badId.statusCode).toBe(400)
 
     const badPage = mockRes()
     await handler(mockReq('/api/sellers/4/orders?page=0'), badPage)
-    expect(badPage.statusCode).toBe(422)
+    expect(badPage.statusCode).toBe(400)
 
     const posted = mockRes()
     await handler(mockReq('/api/sellers/4/orders', 'POST'), posted)

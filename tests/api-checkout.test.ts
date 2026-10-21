@@ -100,14 +100,14 @@ describe('POST /api/checkout', () => {
     expect(res.body.problems[0]).toMatchObject({ code: 'product_missing', productId: 99 })
   })
 
-  it('clamps a junk quantity to 1..99 and merges a repeated product', async () => {
+  it('merges a repeated product and clamps the merged quantity to 99', async () => {
     prismaSpies.product.findMany.mockResolvedValue([
       fakeProduct({ id: 1, price_cents: 100, sellerId: 4, seller: { id: 4, name: 'Acme' } }),
     ])
 
     const res = mockRes()
     await handler(
-      post({ lines: [{ productId: 1, quantity: 'many' }, { productId: 1, quantity: 500 }] }),
+      post({ lines: [{ productId: 1, quantity: 70 }, { productId: 1, quantity: 50 }] }),
       res
     )
 
@@ -130,7 +130,7 @@ describe('POST /api/checkout', () => {
     expect(res.body.total).toBe(100)
   })
 
-  it('answers 422 for junk and never queries', async () => {
+  it('answers 400 for junk and never queries', async () => {
     const bodies: any[] = [
       undefined,
       'not json',
@@ -141,13 +141,17 @@ describe('POST /api/checkout', () => {
       { lines: [{ productId: 0 }] },
       { lines: [{ productId: 'abc' }] },
       { lines: [{ productId: 1.5 }] },
+      { lines: [{ productId: 1, quantity: 'many' }] },
+      { lines: [{ productId: 1, quantity: 500 }] },
+      { lines: [{ productId: 1, quantity: 0 }] },
+      { lines: [{ productId: 1, price_cents: -5 }] },
       { lines: Array.from({ length: MAX_LINES + 1 }, (_value, index) => ({ productId: index + 1 })) },
     ]
 
     for (const body of bodies) {
       const res = mockRes()
       await handler(post(body), res)
-      expect(res.statusCode, JSON.stringify(body)).toBe(422)
+      expect(res.statusCode, JSON.stringify(body)).toBe(400)
       expect(res.body).toHaveProperty('error')
     }
 

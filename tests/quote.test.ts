@@ -27,11 +27,11 @@ describe('lib/quote.ts unit helpers', () => {
     expect(readBody({ body: '' })).toBeNull()
   })
 
-  it('normalizeRequestedLines clamps quantities, merges repeated products and reports errors', () => {
+  it('normalizeRequestedLines merges repeated products, clamps the merged quantity and reports errors', () => {
     const merged = normalizeRequestedLines({
       lines: [
-        { productId: 3, quantity: 200 },
-        { productId: 3, quantity: 1, price_cents: 500 },
+        { productId: 3, quantity: 60 },
+        { productId: 3, quantity: 50, price_cents: 500 },
       ],
     })
     // The first line made no price claim, so the later line's claim is kept:
@@ -42,6 +42,9 @@ describe('lib/quote.ts unit helpers', () => {
     expect(normalizeRequestedLines({ lines: [] })).toEqual({ error: 'Cart is empty' })
     expect(normalizeRequestedLines({ lines: [{ productId: 0 }] })).toEqual({ error: 'Invalid productId' })
     expect(normalizeRequestedLines({ lines: ['nope'] })).toEqual({ error: 'Invalid line' })
+    // Each line's own quantity must be 1..99 — only a merge is clamped.
+    expect(normalizeRequestedLines({ lines: [{ productId: 3, quantity: 200 }] })).toEqual({ error: 'Invalid quantity' })
+    expect(normalizeRequestedLines({ lines: [{ productId: 3, quantity: 0 }] })).toEqual({ error: 'Invalid quantity' })
 
     // Too many lines ( > MAX_LINES ) should be rejected. Create 51 lines.
     const many = { lines: Array.from({ length: 51 }, (_, i) => ({ productId: i + 1 })) }

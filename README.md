@@ -35,7 +35,7 @@ Running
 - Each product title on / links to its detail page at /products/<id>
   (pages/products/[id].tsx), which fetches GET /api/products/<id> in the browser
   and shows the title, price, description and seller. It has its own line for
-  loading, for a product that does not exist (the API's 404 or 422 answers show
+  loading, for a product that does not exist (the API's 404 or 400 answers show
   "Product not found", not the red error banner) and for a failed request.
 - The detail link carries the current search, seller and page
   (/products/7?q=mug&sellerId=4&page=2), so "Back to results" returns to the
@@ -45,7 +45,7 @@ Running
   /sellers/<id> (pages/sellers/[id].tsx), which fetches
   GET /api/sellers/<id>?page=&size= in the browser and shows the seller's name,
   their products with prices and Prev/Next paging. It has the same four states
-  as the product page: loading, "Seller not found" for the API's 404 or 422, a
+  as the product page: loading, "Seller not found" for the API's 404 or 400, a
   failed request, and the list. buildSellerHref in lib/products-query.ts builds
   the link and carries only page and size (never q or sellerId); an id that is
   not a positive integer falls back to the storefront href, so a bad row can
@@ -96,7 +96,7 @@ Running
   GET /api/orders/<reference> and shows the reference, the status, the bought
   lines grouped by seller with subtotals and the order total. It has the same
   four states as the other detail pages: loading, "Order not found" for the
-  API's 404 or 422, a failed request, and the order. It reads nothing from the
+  API's 404 or 400, a failed request, and the order. It reads nothing from the
   cart — the order lives on the server.
 - lib/orders.ts is the order state machine as pure functions: ORDER_STATUSES
   (pending, paid, shipped, delivered, cancelled), canTransition, applyTransition
@@ -112,8 +112,8 @@ Running
   quoted.
 - lib/products-query.ts is the single place that turns that state into the API
   URL (buildProductsQuery) and reads it back off next/router (parseProductsQuery).
-  It clamps page >= 1, size to 1..100 and q to 100 characters — the same bounds
-  pages/api/products.ts answers 422 on — so a hand-edited URL lands on the
+  It clamps page to 1..10000, size to 1..100 and q to 100 characters — the same bounds
+  pages/api/products.ts answers 400 on — so a hand-edited URL lands on the
   nearest legal page instead of the error banner.
 - Prices are stored as whole cents (Product.price_cents) and rendered through
   formatPrice in lib/format.ts.
@@ -121,6 +121,17 @@ Running
 Testing
 
 - Run tests: npm test
+- Browser smoke test: npm run test:e2e (Playwright, after setup and npm run build;
+  it starts npm start itself). It walks storefront -> seller facet and search ->
+  product -> cart -> checkout review. CI runs it after the build.
+- tests/api-auth.test.ts covers the authorisation rules: a seller creating,
+  editing and delisting only their own products and renaming only their own
+  storefront (another seller gets 403, no token 401), and a buyer cancelling
+  only an order placed with their own cookie.
+- tests/validation.test.ts sends junk paths, queries and bodies to every route
+  and checks each answers 400 without a database call; tests/rate-limit.test.ts
+  covers the limiter's LRU bound, TTL expiry and client keying (a spoofed
+  X-Forwarded-For with and without TRUSTED_PROXY).
 - The API tests need no database: they replace @prisma/client with the spies in
   tests/helpers/prisma-mock.ts, so npm install && npm test is green on a clean
   clone with no generate, migrate or seed, and prisma/dev.db is never written.
@@ -143,26 +154,26 @@ Testing
 - tests/api-checkout.test.ts covers POST /api/checkout: pricing from the
   database rather than from the body, per-seller grouping and the cents total,
   the price_changed and product_missing problems, quantity clamping and the
-  merge of a repeated product, a raw JSON string body, 422 for ten shapes of
+  merge of a repeated product, a raw JSON string body, 400 for fourteen shapes of
   junk (including more than 50 lines), 405 with Allow: POST on a GET and JSON
   500 when the query rejects.
 - tests/orders.test.ts covers lib/orders.ts (the allowed transitions, the
   refusals with their messages, the terminal statuses, the reference format and
   its rejection of a bare row id) and lib/quote.ts (body reading, quantity
-  clamping and merging, the 422 reasons, pricing from the rows rather than the
+  clamping of a merged line, the 400 reasons, pricing from the rows rather than the
   claim, and per-seller grouping). It needs no DOM and no database.
 - tests/api-orders.test.ts covers POST /api/orders (the written order and its
   item snapshots, 409 with nothing written when a price moved or a product
   vanished, the id-only query with no email, a raw JSON string body, seven
-  shapes of 422, 405 with Allow: POST and JSON 500 when the write rejects) and
-  GET /api/orders/[id] (lookup by reference with per-seller grouping, 422 for a
+  shapes of 400, 405 with Allow: POST and JSON 500 when the write rejects) and
+  GET /api/orders/[id] (lookup by reference with per-seller grouping, 400 for a
   row id or a malformed reference, 404 for an unknown one, 405 with Allow: GET
   and JSON 500).
 - tests/api-sellers-orders.test.ts covers GET /api/sellers/[id]/orders: grouping
   a seller's OrderItem rows back into orders with a per-order subtotal, newest
   order first, that the response never carries the reference or another
   seller's lines, an empty result for a seller with no orders (no second query
-  fired), order-level pagination, 404 for an unknown seller, 422 for a bad id
+  fired), order-level pagination, 404 for an unknown seller, 400 for a bad id
   or page, and 405 with Allow: GET on a POST.
 - Each test sets what a spy resolves to and asserts the response plus the query
   arguments (skip, take, orderBy, select). Mocked tests do not prove SQL is
@@ -171,14 +182,14 @@ Testing
 API
 
 - GET /api/products?page=1&size=20 returns JSON { items, total, page, size }. Ensure the DB is seeded first.
-- GET /api/products also accepts q (matched against title and description, up to 100 characters) and sellerId (a positive integer); out-of-range page, size, q or sellerId answers 422. The storefront at / drives exactly these params.
-- GET /api/products/[id] returns one product as JSON with its seller as { id, name }; a non-numeric or non-positive id answers 422 { error: 'Invalid id' } and an unknown id answers 404 { error: 'Product not found' }. The detail page at /products/[id] drives exactly this route.
+- GET /api/products also accepts q (matched against title and description, up to 100 characters) and sellerId (a positive integer); page must be 1..10000, size 1..100, q at most 100 characters and sellerId a positive integer; anything else answers 400. The storefront at / drives exactly these params.
+- GET /api/products/[id] returns one product as JSON with its seller as { id, name }; a non-numeric or non-positive id answers 400 { error: 'Invalid id' } and an unknown id answers 404 { error: 'Product not found' }. The detail page at /products/[id] drives exactly this route.
 - GET /api/sellers returns JSON { sellers, total } with each seller as
   { id, name, productCount }, ordered by name and capped at 100 rows. As with
   /api/sellers/[id], the query selects id, name and the product count only - the
   email column is never returned. The seller picker on / drives this route.
-- GET /api/sellers/[id]?page=1&size=20 returns JSON { seller, products, total, page, size } for the requested seller id. The seller carries id and name only - the email column is never returned. A non-numeric or non-positive id answers 422 { error: 'Invalid id' } and an unknown id answers 404 { error: 'Seller not found' }. The seller page at /sellers/[id] drives exactly this route.
-- GET /api/sellers/[id]/orders?page=1&size=20 returns JSON { seller, orders, total, page, size } for that seller: each order is { status, createdAt, lines, subtotal } built from that seller's own OrderItem rows (sellerId/sellerName are snapshotted on every line at order time, so no schema change was needed). Orders are grouped and paginated at the order level, newest first, and the response never carries the order reference or another seller's lines from the same order - the same 422/404 rules as /api/sellers/[id] apply to the id, and the 405/500 rules above apply to method and errors. The "View orders" link on /sellers/[id] and the page at /sellers/[id]/orders drive exactly this route.
+- GET /api/sellers/[id]?page=1&size=20 returns JSON { seller, products, total, page, size } for the requested seller id. The seller carries id and name only - the email column is never returned. A non-numeric or non-positive id answers 400 { error: 'Invalid id' } and an unknown id answers 404 { error: 'Seller not found' }. The seller page at /sellers/[id] drives exactly this route.
+- GET /api/sellers/[id]/orders?page=1&size=20 returns JSON { seller, orders, total, page, size } for that seller: each order is { status, createdAt, lines, subtotal } built from that seller's own OrderItem rows (sellerId/sellerName are snapshotted on every line at order time, so no schema change was needed). Orders are grouped and paginated at the order level, newest first, and the response never carries the order reference or another seller's lines from the same order - the same 400/404 rules as /api/sellers/[id] apply to the id, and the 405/500 rules above apply to method and errors. The "View orders" link on /sellers/[id] and the page at /sellers/[id]/orders drive exactly this route.
 - POST /api/checkout takes { lines: [{ productId, quantity, price_cents? }] }
   and returns a quote priced from the database:
   { lines, sellers, total, count, problems, limits }. Each line carries the
@@ -188,10 +199,10 @@ API
   line whose stored price differs comes back in problems as
   { code: 'price_changed', productId, was, now }; a product that no longer
   exists comes back as { code: 'product_missing', productId } and is left out
-  of the total. Quantities are clamped to 1..99 and a repeated productId is
-  merged, rather than answering an error. A body that is not an array of lines,
-  an empty cart, more than 50 lines or a productId that is not a positive
-  integer answers 422. Nothing is persisted and no payment is taken by this
+  of the total. A repeated productId is merged and the merged quantity is
+  clamped to 99. A body that is not an array of lines, an empty cart, more than
+  50 lines, a productId that is not a positive integer, a quantity outside
+  1..99 or a price_cents claim that is not a whole number of cents answers 400. Nothing is persisted and no payment is taken by this
   route: it only quotes.
 - POST /api/orders takes the same { lines: [...] } body, prices it again through
   lib/quote.ts and writes the order. It answers 201
@@ -199,18 +210,45 @@ API
   "pending". If the re-pricing turns up any problem - a price_changed or a
   product_missing - it answers 409 with those problems and the fresh quote and
   writes nothing, so the buyer re-reviews instead of being charged a total they
-  never saw. The same 422 rules as /api/checkout apply to a malformed body.
+  never saw. The same 400 rules as /api/checkout apply to a malformed body.
   Order and OrderItem rows snapshot the title, price, quantity, line total and
   seller name, so an order still reads correctly after a product is renamed,
   re-priced or delisted. No payment is taken: the order sits at pending.
+  The response sets an HttpOnly om_buyer cookie (reusing the one the browser
+  already holds) and the order stores only its SHA-256: that cookie is what
+  lets the buyer change the order later.
+  It is rate limited to 10 orders per client per minute (429 with Retry-After).
+  The client is the socket address; X-Forwarded-For is ignored unless
+  TRUSTED_PROXY names the proxy the request came from (a comma-separated list
+  of addresses), and then only the hop that proxy appended is used, never the
+  first entry. Counts live in a bounded LRU (10,000 clients, entries expire
+  with their window) in each server process.
 - GET /api/orders/[reference] returns one order as
   { reference, status, total, count, createdAt, lines, sellers }. Orders are
   looked up by their public reference ("om_" + 24 hex) and never by row id, so
   nobody can walk /api/orders/1, /api/orders/2 through other people's orders; a
-  reference of any other shape answers 422 { error: 'Invalid reference' } and an
+  reference of any other shape answers 400 { error: 'Invalid reference' } and an
   unknown one answers 404 { error: 'Order not found' }. The order carries no
   buyer contact detail, so there is nothing on it to leak. The confirmation page
   at /orders/[id] drives exactly this route.
-- Every read API route is GET-only and /api/checkout and /api/orders are
-  POST-only: any other method answers 405 with an Allow header naming the one that is supported and JSON { error: 'Method not allowed' }.
+- PATCH /api/orders/[reference] with { status: 'cancelled' } cancels a pending
+  order. It needs the om_buyer cookie the order was placed with: none answers
+  401, another buyer's answers 403 (knowing the reference is not enough), an
+  unknown status answers 400 and a move the state machine refuses answers 409.
+- Sellers change their own catalogue and storefront with an API token sent as
+  Authorization: Bearer <token>. `npm run seller:token -- <sellerId>` issues
+  (or rotates) one and prints it once; only its SHA-256 is stored. No token
+  answers 401 and another seller's row answers 403:
+  - POST /api/products { title, description?, price_cents } creates a product
+    for the token's seller (a sellerId in the body is refused, never trusted);
+  - PATCH /api/products/[id] { title?, description?, price_cents? } and
+    DELETE /api/products/[id] edit or delist the seller's own product;
+  - PATCH /api/sellers/[id] { name } renames the seller's own storefront.
+  Bodies are strict: an unknown field (email, sellerId, ...) answers 400.
+- The cart has no server side to protect: it lives in the buyer's own
+  localStorage, and POST /api/checkout only quotes it.
+- Every route validates its path, query and body with zod (lib/validation.ts)
+  before touching the database, and answers 400 { error } for bad input.
+- Each route answers 405 with an Allow header naming the methods it supports
+  and JSON { error: 'Method not allowed' } for any other method.
 - Every API route answers JSON, including failures: an unexpected exception is logged with console.error on the server and answered as 500 { error: 'Internal server error' }, never an HTML error page or a stack trace.

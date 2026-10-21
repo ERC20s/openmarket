@@ -12,7 +12,8 @@
 // compared with the stored price and reported back as a problem, but it is
 // never what the buyer is charged.
 
-import { MAX_LINES, clampQuantity } from './cart'
+import { clampQuantity } from './cart'
+import { cartBody, check } from './validation'
 
 /** One priced line, as the server sees it. */
 export type QuoteLine = {
@@ -74,41 +75,29 @@ export function readBody(req: { body?: unknown }): any {
 }
 
 /**
- * Turn the posted body into requested lines, or say which 422 to answer.
+ * Turn the posted body into requested lines, or say which 400 to answer.
  *
- * Junk quantities are clamped rather than rejected — exactly what clampQuantity
- * does for the cart page — and a repeated productId merges, the way addLine
- * merges in the cart. Only a body that is not a cart at all is an error.
+ * The shape, the id and the 1..99 quantity range are checked by the zod schema
+ * in lib/validation.ts — the same 1..99 the cart page clamps to, so a real cart
+ * never trips it. A repeated productId merges the way addLine merges in the
+ * cart, and only that merged total is clamped back to 99.
  */
 export function normalizeRequestedLines(
   body: unknown
 ): { error: string } | { requested: RequestedLine[] } {
-  const rawLines = body && typeof body === 'object' ? (body as { lines?: unknown }).lines : undefined
-
-  if (!Array.isArray(rawLines)) return { error: 'Invalid lines' }
-  if (rawLines.length === 0) return { error: 'Cart is empty' }
-  // The same ceiling lib/cart.ts enforces in the browser: a body with ten
-  // thousand lines is an attack or a bug, not a shopping trip.
-  if (rawLines.length > MAX_LINES) return { error: 'Too many lines' }
+  const parsed = check(cartBody, body)
+  if ('error' in parsed) return parsed
 
   const requested: RequestedLine[] = []
-  for (const raw of rawLines) {
-    if (!raw || typeof raw !== 'object') return { error: 'Invalid line' }
-
-    const productId = toInt((raw as any).productId)
-    if (productId === null || productId < 1) return { error: 'Invalid productId' }
-
-    const quantity = clampQuantity((raw as any).quantity as any)
-    const claimedPrice = toInt((raw as any).price_cents)
-
-    const existing = requested.find((line) => line.productId === productId)
+  for (const line of parsed.data.lines) {
+    const existing = requested.find((entry) => entry.productId === line.productId)
     if (existing) {
-      existing.quantity = clampQuantity(existing.quantity + quantity)
-      if (existing.claimedPrice === null) existing.claimedPrice = claimedPrice
+      existing.quantity = clampQuantity(existing.quantity + line.quantity)
+      if (existing.claimedPrice === null) existing.claimedPrice = line.price_cents
       continue
     }
 
-    requested.push({ productId, quantity, claimedPrice })
+    requested.push({ productId: line.productId, quantity: line.quantity, claimedPrice: line.price_cents })
   }
 
   return { requested }

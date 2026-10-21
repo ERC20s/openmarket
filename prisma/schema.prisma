@@ -7,10 +7,14 @@ datasource db {
   url      = "file:./dev.db"
 }
 
+// apiTokenHash is the SHA-256 of the seller's API token (lib/auth.ts), never
+// the token itself. Null means no token was issued: the seller cannot change
+// anything through the API until `npm run seller:token -- <id>` issues one.
 model Seller {
   id    Int     @id @default(autoincrement())
   name  String
   email String  @unique
+  apiTokenHash String? @unique
   products Product[]
 }
 
@@ -32,11 +36,14 @@ model Product {
 // has no enums - lib/orders.ts owns the allowed values and the transitions
 // between them. Money is whole cents, as everywhere else in this repository.
 // The order carries no buyer contact detail: there is nothing here to leak.
+// buyerTokenHash is the SHA-256 of the buyer cookie the order was placed with
+// (lib/auth.ts); only a request carrying that cookie may change the order.
 model Order {
   id          Int         @id @default(autoincrement())
   reference   String      @unique
   status      String      @default("pending")
   total_cents Int
+  buyerTokenHash String?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
   items       OrderItem[]

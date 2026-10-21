@@ -11,8 +11,10 @@ storefront, faceted search, seller pages, cart, checkout quote and an order stat
 - Test (the `test` entry): `npm test` — vitest; the API tests mock `@prisma/client`, no DB needed
 - Run (the `web` entry): `npm run dev` — http://localhost:3000
 - Build: `npm run build`, then `npm start`
-- CI (`.github/workflows/ci.yml`) runs `npm ci`, setup, `npm test` and `npm run build`
-  on every push and pull request. Keep it running exactly these checks.
+- Browser smoke: `npm run test:e2e` — Playwright against the production build (run setup and
+  `npm run build` first; it starts `npm start` itself). Locally `npx playwright install chromium` once.
+- CI (`.github/workflows/ci.yml`) runs `npm ci`, setup, `npm test`, `npm run build` and
+  `npm run test:e2e` on every push and pull request. Keep it running exactly these checks.
 
 A schema change needs a new migration under `prisma/migrations/` (`npx prisma migrate dev --name <name>`).
 

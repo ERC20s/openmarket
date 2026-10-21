@@ -66,7 +66,7 @@ export default function SellerOrdersPage() {
 
     fetch(`/api/sellers/${numericId}/orders?page=${query.page}&size=${query.size}`)
       .then((res) => {
-        if (res.status === 404 || res.status === 422) return null
+        if (res.status === 404 || res.status === 400) return null
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json() as Promise<SellerOrdersResponse>
       })

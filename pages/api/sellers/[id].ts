@@ -11,39 +11,36 @@ const prisma = (process.env.NODE_ENV === 'production')
   : (globalThis as any).__prisma ?? ((globalThis as any).__prisma = new PrismaClient())
 
 import { apiRoute } from '../../../lib/api'
-import { parsePageSize } from '../../../lib/pagination'
+import { FORBIDDEN, UNAUTHENTICATED, authenticateSeller } from '../../../lib/auth'
+import { readBody } from '../../../lib/quote'
+import {
+  idParam,
+  paginationQuery,
+  parseOr400,
+  pathSegment,
+  queryOf,
+  requestUrl,
+  storefrontUpdateBody,
+} from '../../../lib/validation'
 
 export default apiRoute(async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method === 'PATCH') {
+    await updateStorefront(req, res)
+    return
+  }
   await getSeller(req, res)
-}, { methods: ['GET'], name: 'GET /api/sellers/[id]' })
+}, { methods: ['GET', 'PATCH'], name: '/api/sellers/[id]' })
 
 async function getSeller(req: NextApiRequest, res: NextApiResponse) {
   // Expect URLs like /api/sellers/1
-  const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
-  const parts = url.pathname.split('/')
-  const last = parts[parts.length - 1]
-  const id = parseInt(last, 10)
+  const url = requestUrl(req)
+  const id = parseOr400(res, idParam, pathSegment(url))
+  if (id === undefined) return
 
-  if (Number.isNaN(id) || id < 1) {
-    res.status(422).json({ error: 'Invalid id' })
-    return
-  }
-
-  // Only support GET for now
-  if (req.method && req.method !== 'GET') {
-    res.setHeader('Allow', 'GET')
-    res.status(405).json({ error: 'Method not allowed' })
-    return
-  }
-
-  const pageRaw = url.searchParams.get('page')
-  const sizeRaw = url.searchParams.get('size')
-
-  const { page, size, skip, error } = parsePageSize(pageRaw, sizeRaw)
-  if (error) {
-    res.status(422).json({ error })
-    return
-  }
+  const query = parseOr400(res, paginationQuery, queryOf(url, ['page', 'size']))
+  if (!query) return
+  const { page, size } = query
+  const skip = (page - 1) * size
 
   // Ensure seller exists. Select explicitly: a bare findUnique returns every
   // column, which would ship the seller's email address to any visitor. The
@@ -69,4 +66,31 @@ async function getSeller(req: NextApiRequest, res: NextApiResponse) {
   ])
 
   res.status(200).json({ seller, products, total, page, size })
+}
+
+// A seller edits their own storefront (today: its display name) and nobody
+// else's. The token says who is asking; the path says whose storefront.
+async function updateStorefront(req: NextApiRequest, res: NextApiResponse) {
+  const id = parseOr400(res, idParam, pathSegment(requestUrl(req)))
+  if (id === undefined) return
+
+  const seller = await authenticateSeller(prisma, req)
+  if (!seller) {
+    res.status(401).json(UNAUTHENTICATED)
+    return
+  }
+  if (seller.id !== id) {
+    res.status(403).json(FORBIDDEN)
+    return
+  }
+
+  const changes = parseOr400(res, storefrontUpdateBody, readBody(req))
+  if (!changes) return
+
+  const updated = await prisma.seller.update({
+    where: { id },
+    data: changes,
+    select: { id: true, name: true },
+  })
+  res.status(200).json({ seller: updated })
 }

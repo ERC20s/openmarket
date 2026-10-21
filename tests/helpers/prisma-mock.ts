@@ -20,10 +20,14 @@ export const prismaSpies = {
     count: vi.fn(),
     findMany: vi.fn(),
     findUnique: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
   },
   seller: {
     findMany: vi.fn(),
     findUnique: vi.fn(),
+    update: vi.fn(),
   },
   order: {
     create: vi.fn(),
@@ -62,8 +66,12 @@ export function resetPrismaSpies() {
   prismaSpies.product.count.mockReset().mockResolvedValue(0)
   prismaSpies.product.findMany.mockReset().mockResolvedValue([])
   prismaSpies.product.findUnique.mockReset().mockResolvedValue(null)
+  prismaSpies.product.create.mockReset().mockResolvedValue(null)
+  prismaSpies.product.update.mockReset().mockResolvedValue(null)
+  prismaSpies.product.delete.mockReset().mockResolvedValue(null)
   prismaSpies.seller.findMany.mockReset().mockResolvedValue([])
   prismaSpies.seller.findUnique.mockReset().mockResolvedValue(null)
+  prismaSpies.seller.update.mockReset().mockResolvedValue(null)
   // order.create echoes back what the route asked for, so a test that does not
   // care about the written row still gets a plausible order out of the route.
   prismaSpies.order.create.mockReset().mockImplementation(async (args: any) => ({
