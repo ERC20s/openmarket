@@ -137,7 +137,9 @@ describe('lib/quote.ts, shared by /api/checkout and /api/orders', () => {
         { productId: 3, quantity: 1, price_cents: 500 },
       ],
     })
-    expect(merged).toEqual({ requested: [{ productId: 3, quantity: 99, claimedPrice: null }] })
+    // The first line made no price claim, so the later line's claim is kept:
+    // dropping it would let a moved price reach POST /api/orders unflagged.
+    expect(merged).toEqual({ requested: [{ productId: 3, quantity: 99, claimedPrice: 500 }] })
 
     expect(normalizeRequestedLines({})).toEqual({ error: 'Invalid lines' })
     expect(normalizeRequestedLines({ lines: [] })).toEqual({ error: 'Cart is empty' })

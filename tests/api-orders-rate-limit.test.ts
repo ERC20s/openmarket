@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 vi.mock('@prisma/client', async () => {
   const { PrismaClientMock } = await import('./helpers/prisma-mock')
@@ -12,50 +12,55 @@ import { resetRateLimit } from '../lib/rate-limit'
 beforeEach(() => {
   resetPrismaSpies()
   resetRateLimit()
+  prismaSpies.product.findMany.mockResolvedValue([
+    { id: 1, title: 'Mug', price_cents: 1200, sellerId: 4, seller: { id: 4, name: 'Acme' } },
+  ])
 })
 
-describe('rate limiting POST /api/orders', () => {
-  it('allows up to the default threshold and then returns 429 and writes nothing', async () => {
-    prismaSpies.product.findMany.mockResolvedValue([
-      { id: 1, title: 'Mug', price_cents: 1200, sellerId: 4, seller: { id: 4, name: 'Acme' } },
-    ])
+const body = { lines: [{ productId: 1, quantity: 1 }] }
 
-    // Make the allowed number of requests (default 10) from distinct socket addresses
+function fromSocket(remoteAddress: string, forwardedFor?: string): any {
+  const req: any = mockReq('/api/orders', 'POST', body, { remoteAddress })
+  if (forwardedFor) req.headers['x-forwarded-for'] = forwardedFor
+  return req
+}
+
+describe('rate limiting POST /api/orders', () => {
+  it('allows the default 10 requests from one client, then answers 429 and writes nothing', async () => {
     for (let i = 0; i < 10; i++) {
       const res = mockRes()
-      await createHandler(mockReq('/api/orders', 'POST', { lines: [{ productId: 1, quantity: 1 }] }, { remoteAddress: `127.0.0.${i + 1}` }), res)
-      expect([201, 409, 422, 500]).toContain(res.statusCode)
+      await createHandler(fromSocket('127.0.0.1'), res)
+      expect(res.statusCode).toBe(201)
     }
+    expect(prismaSpies.order.create).toHaveBeenCalledTimes(10)
 
-    // The next one from the same socket address should be rejected by the limiter
     const blocked = mockRes()
-    await createHandler(mockReq('/api/orders', 'POST', { lines: [{ productId: 1, quantity: 1 }] }, { remoteAddress: `127.0.0.1` }), blocked)
+    await createHandler(fromSocket('127.0.0.1'), blocked)
     expect(blocked.statusCode).toBe(429)
-    expect(prismaSpies.order.create).not.toHaveBeenCalled()
+    expect(blocked.body).toEqual({ error: 'Too many requests' })
+    expect(prismaSpies.order.create).toHaveBeenCalledTimes(10)
+    expect(prismaSpies.product.findMany).toHaveBeenCalledTimes(10)
 
-    // Now verify X-Forwarded-For with multiple IPs uses the first entry as the key
-    resetRateLimit()
-    const resA = mockRes()
-    const reqA: any = mockReq('/api/orders', 'POST', { lines: [{ productId: 1, quantity: 1 }] }, { remoteAddress: `192.0.2.5` })
-    reqA.headers['x-forwarded-for'] = '203.0.113.1, 198.51.100.2'
-    await createHandler(reqA, resA)
-    expect([201, 409, 422, 500]).toContain(resA.statusCode)
+    // Another client has its own window.
+    const other = mockRes()
+    await createHandler(fromSocket('127.0.0.2'), other)
+    expect(other.statusCode).toBe(201)
+  })
 
-    const resB = mockRes()
-    const reqB: any = mockReq('/api/orders', 'POST', { lines: [{ productId: 1, quantity: 1 }] }, { remoteAddress: `192.0.2.6` })
-    reqB.headers['x-forwarded-for'] = '203.0.113.1, 198.51.100.2'
-    await createHandler(reqB, resB)
-    // Because both requests present the same first X-Forwarded-For IP, the
-    // limiter counts them against the same key and the second should be
-    // rejected once the limit is reached. We make 10 more to exceed the limit.
+  it('keys on the first X-Forwarded-For entry, not the socket address', async () => {
     for (let i = 0; i < 10; i++) {
-      const r = mockRes()
-      await createHandler(mockReq('/api/orders', 'POST', { lines: [{ productId: 1, quantity: 1 }] }, { remoteAddress: `192.0.2.${10 + i}` }), r)
+      const res = mockRes()
+      await createHandler(fromSocket(`192.0.2.${i + 1}`, '203.0.113.1, 198.51.100.2'), res)
+      expect(res.statusCode).toBe(201)
     }
-    const blocked2 = mockRes()
-    const finalReq: any = mockReq('/api/orders', 'POST', { lines: [{ productId: 1, quantity: 1 }] }, { remoteAddress: `192.0.2.99` })
-    finalReq.headers['x-forwarded-for'] = '203.0.113.1, 198.51.100.2'
-    await createHandler(finalReq, blocked2)
-    expect(blocked2.statusCode).toBe(429)
+
+    const blocked = mockRes()
+    await createHandler(fromSocket('192.0.2.99', '203.0.113.1, 198.51.100.3'), blocked)
+    expect(blocked.statusCode).toBe(429)
+
+    // Same proxy hop, different originating client: still allowed.
+    const other = mockRes()
+    await createHandler(fromSocket('192.0.2.99', '203.0.113.2, 198.51.100.2'), other)
+    expect(other.statusCode).toBe(201)
   })
 })

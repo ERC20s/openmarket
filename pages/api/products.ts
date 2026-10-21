@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client'
 declare global {
   // Allow a single PrismaClient instance to be shared across module reloads in dev
   // eslint-disable-next-line no-var
-  var __prisma?: PrismaClient
+  var __prisma: PrismaClient | undefined
 }
 
 const prisma = (process.env.NODE_ENV === 'production')
@@ -12,6 +12,7 @@ const prisma = (process.env.NODE_ENV === 'production')
   : (globalThis as any).__prisma ?? ((globalThis as any).__prisma = new PrismaClient())
 
 import { apiRoute } from '../../lib/api'
+import { parsePageSize } from '../../lib/pagination'
 
 export default apiRoute(async function handler(req: NextApiRequest, res: NextApiResponse) {
   await listProducts(req, res)
@@ -22,7 +23,7 @@ async function listProducts(req: NextApiRequest, res: NextApiResponse) {
   const pageRaw = url.searchParams.get('page')
   const sizeRaw = url.searchParams.get('size')
 
-  const { page, size, skip, error } = require('../../lib/pagination').parsePageSize(pageRaw, sizeRaw)
+  const { page, size, skip, error } = parsePageSize(pageRaw, sizeRaw)
   if (error) {
     res.status(422).json({ error })
     return
