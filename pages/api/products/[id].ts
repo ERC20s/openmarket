@@ -3,14 +3,14 @@ import { PrismaClient } from '@prisma/client'
 
 declare global {
   // eslint-disable-next-line no-var
-  var __prisma?: PrismaClient
+  var __prisma: PrismaClient | undefined
 }
 
 const prisma = (process.env.NODE_ENV === 'production')
   ? new PrismaClient()
   : (globalThis as any).__prisma ?? ((globalThis as any).__prisma = new PrismaClient())
 
-import { apiRoute } from '../../lib/api'
+import { apiRoute } from '../../../lib/api'
 
 export default apiRoute(async function handler(req: NextApiRequest, res: NextApiResponse) {
   await getProduct(req, res)

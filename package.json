@@ -12,6 +12,7 @@
     "test": "vitest"
   },
   "devDependencies": {
+    "@types/faker": "^5.5.9",
     "@types/node": "^20.4.2",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",

@@ -7,7 +7,7 @@ import { normalizeRequestedLines, priceQuote, readBody, requestedIds } from '../
 declare global {
   // Allow a single PrismaClient instance to be shared across module reloads in dev
   // eslint-disable-next-line no-var
-  var __prisma?: PrismaClient
+  var __prisma: PrismaClient | undefined
 }
 
 const prisma = (process.env.NODE_ENV === 'production')

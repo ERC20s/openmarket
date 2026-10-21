@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client'
 declare global {
   // Allow a single PrismaClient instance to be shared across module reloads in dev
   // eslint-disable-next-line no-var
-  var __prisma?: PrismaClient
+  var __prisma: PrismaClient | undefined
 }
 
 const prisma = (process.env.NODE_ENV === 'production')
@@ -16,7 +16,7 @@ const prisma = (process.env.NODE_ENV === 'production')
 // page it, and revisit with search-as-you-type if a marketplace ever outgrows it.
 export const MAX_SELLERS = 100
 
-import { apiRoute } from '../../lib/api'
+import { apiRoute } from '../../../lib/api'
 
 export default apiRoute(async function handler(req: NextApiRequest, res: NextApiResponse) {
   await listSellers(req, res)

@@ -99,7 +99,8 @@ describe('GET /api/sellers/[id]/orders', () => {
     prismaSpies.seller.findUnique.mockResolvedValue({ id: 4, name: 'Acme' })
     prismaSpies.$queryRaw.mockResolvedValueOnce([{ count: 3 }])
     prismaSpies.orderItem.findMany
-      .mockResolvedValueOnce([{ orderId: 5 }, { orderId: 4 }, { orderId: 3 }])
+      // The database answers only the requested page of distinct orderIds.
+      .mockResolvedValueOnce([{ orderId: 3 }])
       .mockResolvedValueOnce([fakeOrderItem({ orderId: 3, sellerId: 4 })])
 
     const res = mockRes()
@@ -107,6 +108,15 @@ describe('GET /api/sellers/[id]/orders', () => {
 
     expect(res.statusCode).toBe(200)
     expect(res.body.total).toBe(3)
+    expect(res.body.orders).toHaveLength(1)
+    expect(prismaSpies.orderItem.findMany).toHaveBeenNthCalledWith(1, {
+      where: { sellerId: 4 },
+      distinct: ['orderId'],
+      select: { orderId: true },
+      orderBy: { order: { createdAt: 'desc' } },
+      skip: 2,
+      take: 2,
+    })
     expect(prismaSpies.orderItem.findMany).toHaveBeenNthCalledWith(2, {
       where: { sellerId: 4, orderId: { in: [3] } },
       include: { order: { select: { status: true, createdAt: true } } },

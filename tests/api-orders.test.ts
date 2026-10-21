@@ -16,12 +16,16 @@ import {
   fakeOrder,
 } from './helpers/prisma-mock'
 import createHandler from '../pages/api/orders/index'
+import { resetRateLimit } from '../lib/rate-limit'
 import readHandler from '../pages/api/orders/[id]'
 
 let errorSpy: any
 
 beforeEach(() => {
   resetPrismaSpies()
+  // POST /api/orders is rate limited per client; every request here comes from
+  // the same mock client, so start each test with an empty window.
+  resetRateLimit()
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
@@ -243,7 +247,8 @@ describe('GET /api/orders/[id]', () => {
       await readHandler(mockReq(`/api/orders/${REF}`, 'PATCH', { status: 'cancelled' }), res)
       expect(res.statusCode).toBe(200)
       expect(res.body.status).toBe('cancelled')
-      expect(prismaSpies.order.update).toHaveBeenCalledWith({ where: { reference: REF }, data: { status: 'cancelled' } })
+      expect(prismaSpies.order.update).toHaveBeenCalledWith({ where: { reference: REF }, data: { status: 'cancelled' }, include: { items: true } })
+      expect(res.body.lines).toHaveLength(1)
     })
   })
 })

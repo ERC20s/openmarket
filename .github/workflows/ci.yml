@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The `setup` entry of the run: block in .d8a.
+      - run: npm run prisma:generate && npm run prisma:migrate && npm run prisma:seed
+
+      # The `test` entry of the run: block in .d8a.
+      - run: npm test
+
+      # The production build from the README.
+      - run: npm run build
